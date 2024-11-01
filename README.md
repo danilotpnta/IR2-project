@@ -24,6 +24,9 @@ conda upgrade pip
 conda install -c conda-forge nmslib
 pip install -r requirements.txt
 ```
+### Generating the Synthetic Data
+By default when you generate the synthetic data, the InPars Toolkit will download (if not already done) one of the BEIR datasets at `~/.ir_datasets/beir/` directory. 
+
 
 ### Troubleshooting
 

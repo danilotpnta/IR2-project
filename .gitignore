@@ -139,3 +139,8 @@ cython_debug/
 
 # ruff
 .ruff_cache/
+
+# Mac, ignore all DS_Store files
+.DS_Store
+
+query_ids_to_remove_from_eval.tsv
