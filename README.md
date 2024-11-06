@@ -14,8 +14,8 @@ cd IR2-project
 ```
 ### Step 2: Create and Activate the Conda Environment
 ```bash
-conda create -n ir2-project python=3.10
-conda activate ir2-project
+conda create -n IR2-env python=3.10
+conda activate IR2-env
 ```
 
 ### Step 3: Install the Required Packages
@@ -24,9 +24,32 @@ conda upgrade pip
 conda install -c conda-forge nmslib
 pip install -r requirements.txt
 ```
-### Generating the Synthetic Data
-By default when you generate the synthetic data, the InPars Toolkit will download (if not already done) one of the BEIR datasets at `~/.ir_datasets/beir/` directory. 
 
+## Running on Snellius
+
+Follow Step 1 from the Installation section.
+
+### Step 2: Create and Activate Python Environment
+
+```bash
+WORK_DIR=$HOME/IR2-project
+cd $WORK_DIR
+
+# Loads Python 3.11 
+module load 2023
+module load Python/3.11.3-GCCcore-12.3.0  
+
+# Creates a virtual environment
+python3 -m venv IR2-env
+module purge 
+source IR2-env/bin/activate
+```
+
+### Step 3: Install the Required Packages
+```bash
+pip install --upgrade pip
+pip install inpars
+```
 
 ### Troubleshooting
 
