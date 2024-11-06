@@ -1,0 +1,25 @@
+#!/bin/bash
+
+#SBATCH --partition=gpu
+#SBATCH --gpus=1
+
+#SBATCH --job-name=
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=4
+#SBATCH --time=00:59:00
+#SBATCH --mem=3000M
+#SBATCH --output=
+#SBATCH --error=
+
+#SBATCH --ear=on
+#SBATCH --ear-policy=monitoring
+#SBATCH --ear-verbose=1
+
+# make sure the correct modules are used and that the virtual environment is active
+PROJECT_ROOT=/home/$USER/IR2-project
+source ./snellius_setup.sh
+setup $PROJECT_ROOT
+
+# TODO: specify job_name, output and error arguments (above)
+
+# rest of the script

@@ -28,14 +28,8 @@ Follow Step 1 from the Installation section.
 WORK_DIR=$HOME/IR2-project
 cd $WORK_DIR
 
-# Loads Python 3.11 
-module load 2023
-module load Python/3.11.3-GCCcore-12.3.0  
-
-# Creates a virtual environment
-python3 -m venv IR2-env
-module purge 
-source IR2-env/bin/activate
+source scripts/snellius_setup.sh
+setup $PWD
 ```
 
 ### Step 3: Install the Required Packages
