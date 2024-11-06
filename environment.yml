@@ -1,0 +1,19 @@
+name: IR2-env
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.10
+  - pip
+  - nmslib
+  - tensorflow
+  - pip:
+      - pyserini>=0.19
+      - transformers>=4.0
+      - pyyaml>=6.0
+      - ir_datasets>=0.5
+      - ftfy>=6.0
+      - accelerate>=0.15
+      - datasets>=2.4.0
+      - tf-keras
+      - wandb

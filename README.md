@@ -14,15 +14,8 @@ cd IR2-project
 ```
 ### Step 2: Create and Activate the Conda Environment
 ```bash
-conda create -n IR2-env python=3.10
+conda env create -f environment.yml
 conda activate IR2-env
-```
-
-### Step 3: Install the Required Packages
-```bash
-conda upgrade pip
-conda install -c conda-forge nmslib
-pip install -r requirements.txt
 ```
 
 ## Running on Snellius
@@ -48,10 +41,23 @@ source IR2-env/bin/activate
 ### Step 3: Install the Required Packages
 ```bash
 pip install --upgrade pip
-pip install inpars
+
+# Install from cache (faster) 
+pip install -r requirements.txt
 ```
 
 ### Troubleshooting
+
+When installing in Snellius you may want to isntall the packages using the `--no-cache-dir` flag. This will prevent the installation from using the cache and may solve some issues.
+
+```bash
+pip install --no-cache-dir -r requirements.txt
+```
+
+You could also use the pip package manager to install InPars toolkit.
+```bash
+pip install inpars
+```
 
 ## License
 
