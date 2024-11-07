@@ -40,6 +40,7 @@ def parse_args():
         '--reranker',
         choices=[
             'castorini/monot5-3b-msmarco-10k',    
+            'castorini/rankllama-v1-7b-lora-passage'
         ],
         default='castorini/monot5-3b-msmarco-10k',
         help="Choose reranker model."
@@ -160,7 +161,7 @@ def main(args):
             print(f'{prompt_type} has already been created. Continuing...')
             continue
         
-        generate_queries(prompt_type, args.dataset, args.model, query_output_path)
+        generate_queries(prompt_type, args.dataset, args.generationLLM, query_output_path)
     
     print(f'Done with the query generation stage! \n\n Continuing with the filtering stage...\n')
 
