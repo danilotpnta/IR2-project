@@ -145,3 +145,6 @@ cython_debug/
 
 query_ids_to_remove_from_eval.tsv
 IR2-env/
+
+cache/
+
