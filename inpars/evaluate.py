@@ -49,6 +49,8 @@ if __name__ == "__main__":
     parser.add_argument("--relevance_threshold", default=1)
     parser.add_argument("--json", action="store_true")
     parser.add_argument("--remove_unjudged", action="store_true")
+
+    parser.add_argument('--output_path', required=True)
     args = parser.parse_args()
 
     if args.dataset == "msmarco":
