@@ -40,7 +40,9 @@ if __name__ == '__main__':
             corpus = pd.read_json(args.dataset, lines=True)
     else:
         corpus = load_corpus(args.dataset, source=args.dataset_source)
-        index = f'beir-v1.0.0-{args.dataset}-flat'
+        # Fix: pyserini from prebuilt index uses ".flat" extension
+        # https://github.com/castorini/pyserini/blob/master/docs/prebuilt-indexes.md?plain=1#L246
+        index = f'beir-v1.0.0-{args.dataset}.flat'
 
     # Convert to {'doc_id': 'text'} format
     corpus = dict(zip(corpus['doc_id'], corpus['text']))
@@ -69,6 +71,7 @@ if __name__ == '__main__':
 
     tmp_run = f'{Path(args.output).parent}/tmp-run-{args.dataset}.txt'
     if not os.path.exists(tmp_run):
+        print("Running retrieval...")
         subprocess.run([
             'python3', '-m', 'pyserini.search.lucene',
                 '--threads', '8',
