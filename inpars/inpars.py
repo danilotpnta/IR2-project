@@ -9,6 +9,10 @@ from transformers import AutoTokenizer, AutoModelForCausalLM
 import urllib.error
 from .prompt import Prompt
 
+import json
+import pickle
+from pathlib import Path
+
 def load_examples(corpus, n_fewshot_examples):
     try:
         df = pd.read_json(
@@ -109,16 +113,89 @@ class InPars:
         documents,
         doc_ids,
         batch_size=1,
+        cache_dir="cache",
+        cache_name="prompts_cache",
+        save_csv=True,
         **generate_kwargs,
     ):
+        torch.cuda.empty_cache()
+
         if self.tf:
             import tensorflow as tf
 
+    
+        cache_dir = Path(cache_dir)
+        cache_dir.mkdir(exist_ok=True)
+        cache_file = cache_dir / f"{cache_name}.pkl"
+
+        prompts_csv = cache_dir / f"{cache_name}_prompts.csv"
+        results_csv = cache_dir / f"{cache_name}_results.csv"
+
+        # Try to load cached prompts
+        prompts = []
+        cached_indices = set()
+        if cache_file.exists():
+            try:
+                with open(cache_file, 'rb') as f:
+                    cache_data = pickle.load(f)
+                    cached_prompts = cache_data.get('prompts', [])
+                    cached_doc_ids = cache_data.get('doc_ids', [])
+                    
+                    prompt_map = dict(zip(cached_doc_ids, cached_prompts))
+                    
+                    for idx, doc_id in enumerate(doc_ids):
+                        if doc_id in prompt_map:
+                            prompts.append(prompt_map[doc_id])
+                            cached_indices.add(idx)
+                    
+                    print(f"Loaded {len(cached_indices)} prompts from cache")
+            except Exception as e:
+                print(f"Error loading cache: {e}")
+                prompts = []
+                cached_indices = set()
+                
         disable_pbar = False if len(documents) > 1_000 else True
-        prompts = [
-            self.prompter.build(document, n_examples=self.n_fewshot_examples)
-            for document in tqdm(documents, disable=disable_pbar, desc="Building prompts")
-        ]
+        new_prompts = []
+        new_doc_ids = []
+        
+        for idx, (document, doc_id) in enumerate(tqdm(
+            zip(documents, doc_ids),
+            total=len(documents),
+            disable=disable_pbar,
+            desc="Building prompts"
+        )):
+            if idx not in cached_indices:
+                prompt = self.prompter.build(document, n_examples=self.n_fewshot_examples)
+                new_prompts.append(prompt)
+                new_doc_ids.append(doc_id)
+                prompts.append(prompt)
+
+        # Update cache with new prompts
+        if new_prompts:
+            try:
+                if cache_file.exists():
+                    with open(cache_file, 'rb') as f:
+                        cache_data = pickle.load(f)
+                else:
+                    cache_data = {'prompts': [], 'doc_ids': []}
+
+                cache_data['prompts'].extend(new_prompts)
+                cache_data['doc_ids'].extend(new_doc_ids)
+
+                with open(cache_file, 'wb') as f:
+                    pickle.dump(cache_data, f)
+                print(f"Cached {len(new_prompts)} new prompts")
+
+                if save_csv:
+                    prompts_df = pd.DataFrame({
+                        'doc_id': cache_data['doc_ids'],
+                        'prompt': cache_data['prompts']
+                    })
+                    prompts_df.to_csv(prompts_csv, index=False)
+                    print(f"Saved prompts to {prompts_csv}")
+
+            except Exception as e:
+                print(f"Error updating cache: {e}")
 
         if self.tf:
             generate = tf.function(self.model.generate, jit_compile=True)
@@ -144,16 +221,19 @@ class InPars:
             if not self.tf:
                 tokens.to(self.device)
 
+            # TODO: Quick fix, see whether we need this argument
+            if 'return_dict' in generate_kwargs:
+                del generate_kwargs['return_dict']
+
             outputs = generate(
                 input_ids=tokens["input_ids"].long(),
                 attention_mask=tokens["attention_mask"].long(),
                 max_new_tokens=self.max_new_tokens,
                 output_scores=True,
-                return_dict=True,
-                return_dict_in_generate=True,
                 eos_token_id=198,  # hardcoded Ċ id
                 bos_token_id=self.tokenizer.bos_token_id,
                 pad_token_id=self.tokenizer.pad_token_id,
+                return_dict_in_generate=True, 
                 **generate_kwargs,
             )
 
@@ -187,5 +267,13 @@ class InPars:
                         "fewshot_examples": [example[0] for example in self.fewshot_examples],
                     }
                 )
+
+                # Save intermediate results to CSV
+                if save_csv:
+                    results_df = pd.DataFrame(results)
+                    # Convert log_probs and fewshot_examples to strings for CSV storage
+                    results_df['log_probs'] = results_df['log_probs'].apply(lambda x: ','.join(map(str, x)))
+                    results_df['fewshot_examples'] = results_df['fewshot_examples'].apply(lambda x: ','.join(map(str, x)))
+                    results_df.to_csv(results_csv, index=False)
 
         return results
