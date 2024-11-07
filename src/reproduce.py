@@ -1,6 +1,7 @@
 import subprocess
 import argparse 
 import time 
+import json
 import os 
 
 def parse_args():
@@ -217,6 +218,14 @@ def main(args):
             output_path = os.path.join(data_path, prompt_type, filter_type, 'results.json')
 
             evaluate(args.dataset, trec_path, output_path)
+
+            with open(output_path, 'r') as rf:
+                data = json.loads(rf)
+            
+            print(f'--------Results of ({prompt_type, filter_type})--------')
+            for key, value in data.items():
+                print(f'|{key}\t\t|\t{value}\t|')
+    
 
 
 if __name__ == '__main__':
