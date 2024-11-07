@@ -47,7 +47,6 @@ def parse_args():
     )
     
     args = parser.parse_args()
-    print(f'------Starting reproduction experiment {args.experiment}------')
 
     return args 
 
@@ -57,11 +56,11 @@ def generate_queries(prompt_type:str, dataset:str, model:str, output_path:str) -
 
     subprocess.run([
         "python", "-m", "inpars.generate",
-        f"--prompt='{prompt_type}'",
-        f"--dataset='{dataset}'",
-        "--dataset_source='ir_datasets'",
-        f"--base_model='{model}'",
-        f"--output='{output_path}'"
+        f"--prompt={prompt_type}",
+        f"--dataset={dataset}",
+        "--dataset_source=ir_datasets",
+        f"--base_model={model}",
+        f"--output={output_path}"
     ])
 
     generation_time = time.time() - start_generation
@@ -74,11 +73,11 @@ def filter_queries(query_path:str, dataset:str, output_path:str, filtering_strat
 
     subprocess.run([
         "python", "-m", "inpars.filter",
-        f"--input='{query_path}'",
-        f"--dataset='{dataset}'",
-        f"--filter_strategy='{filtering_strategy}'",
-        f"--keep_top_k='{10_000}'",
-        f"--output='{output_path}'"
+        f"--input={query_path}",
+        f"--dataset={dataset}",
+        f"--filter_strategy={filtering_strategy}",
+        f"--keep_top_k={10_000}",
+        f"--output={output_path}"
     ])
 
     generation_time = time.time() - start_generation
@@ -90,9 +89,9 @@ def generate_triples(filtered_path:str, dataset:str, output_path:str):
 
     subprocess.run([
         "python", "-m", "inpars.generate_triples",
-        f"--input='{filtered_path}'",
-        f"--dataset='{dataset}'",
-        f"--output='{output_path}'"
+        f"--input={filtered_path}",
+        f"--dataset={dataset}",
+        f"--output={output_path}"
     ])
 
     generation_time = time.time() - start_generation
@@ -104,9 +103,9 @@ def train_reranker(triples_path:str, ranker_model:str, output_path):
 
     subprocess.run([
         "python", "-m", "inpars.generate_triples",
-        f"--triples='{triples_path}'",
-        f"--base_model='{ranker_model}'",
-        f"--output_dir='{output_path}'",
+        f"--triples={triples_path}",
+        f"--base_model={ranker_model}",
+        f"--output_dir={output_path}",
         "--max_steps='156'"
     ])
 
@@ -119,9 +118,9 @@ def rerank(model_path:str, dataset:str, output_path):
 
     subprocess.run([
         "python", "-m", "inpars.rerank",
-        f"--model='{model_path}'",
-        f"--dataset='{dataset}'",
-        f"--output_run='{output_path}'",
+        f"--model={model_path}",
+        f"--dataset={dataset}",
+        f"--output_run={output_path}",
     ])
 
     generation_time = time.time() - start_generation
@@ -131,9 +130,9 @@ def evaluate(dataset:str, trec_path:str, output_path:str):
     print(f'------Starting evaluation of {trec_path} for {dataset}------')
     subprocess.run([
         "python", "-m", "inpars.evaluate",
-        f"--dataset='{dataset}'",
-        f"--run='{trec_path}'",
-        f"--output_path='{output_path}'",
+        f"--dataset={dataset}",
+        f"--run={trec_path}",
+        f"--output_path={output_path}",
         "--json"
     ])
     print('Done!\n')
