@@ -148,3 +148,5 @@ IR2-env/
 
 cache/
 
+# snellius
+logs/
