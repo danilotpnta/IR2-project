@@ -48,7 +48,7 @@ def load_corpus(dataset_name, source='ir_datasets'):
                 )
             )
             docs_ids.append(doc['_id'])
-
+    
     return pd.DataFrame({'doc_id': docs_ids, 'text': texts})
 
 

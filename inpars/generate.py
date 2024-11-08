@@ -5,6 +5,18 @@ from .dataset import load_corpus
 from transformers import set_seed
 from .inpars import InPars
 
+import logging
+import sys
+
+from torch.cuda import empty_cache
+
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s",
+    handlers=[logging.StreamHandler(sys.stdout)]
+)
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--base_model', default='EleutherAI/gpt-j-6B')
@@ -20,7 +32,7 @@ if __name__ == "__main__":
     parser.add_argument('--max_query_length', default=200, type=int, required=False)
     parser.add_argument('--max_prompt_length', default=2048, type=int, required=False)
     parser.add_argument('--max_new_tokens', type=int, default=64)
-    parser.add_argument('--max_generations', type=int, default=100_000)
+    parser.add_argument('--max_generations', type=int, default=2000)
     parser.add_argument('--batch_size', type=int, default=1)
     parser.add_argument('--revision', type=str, default=None)
     parser.add_argument('--fp16', action='store_true')
@@ -34,6 +46,8 @@ if __name__ == "__main__":
     args = parser.parse_args()
     set_seed(args.seed)
 
+    logging.info(args.output)
+
     if os.path.exists(args.dataset):
         if args.dataset.endswith('.csv'):
             dataset = pd.read_csv(args.input)
@@ -46,39 +60,53 @@ if __name__ == "__main__":
         args.max_generations = len(dataset)
 
     dataset = dataset.sample(args.max_generations)
+    logging.info(len(dataset))
 
-    if args.n_fewshot_examples >= len(dataset):
-        raise Exception(
-            f'Number of few-shot examples must be higher than the number of documents \
-            ({args.n_fewshot_examples} >= {len(dataset)})'
+    # if args.n_fewshot_examples >= len(dataset):
+    #     raise Exception(
+    #         f'Number of few-shot examples must be higher than the number of documents \
+    #         ({args.n_fewshot_examples} >= {len(dataset)})'
+    #     )
+
+    logging.info('starting generation')
+    try:
+        logging.info(args.n_fewshot_examples)
+        generator = InPars(
+            base_model=args.base_model,
+            revision=args.revision,
+            corpus=args.dataset,
+            prompt=args.prompt,
+            n_fewshot_examples=args.n_fewshot_examples,
+            max_doc_length=args.max_doc_length,
+            max_query_length=args.max_query_length,
+            max_prompt_length=args.max_prompt_length,
+            max_new_tokens=args.max_new_tokens,
+            fp16=args.fp16,
+            int8=args.int8,
+            tf=args.tf,
+            device=args.device,
+            torch_compile=args.torch_compile,
+            # verbose=True,
         )
-
-    generator = InPars(
-        base_model=args.base_model,
-        revision=args.revision,
-        corpus=args.dataset,
-        prompt=args.prompt,
-        n_fewshot_examples=args.n_fewshot_examples,
-        max_doc_length=args.max_doc_length,
-        max_query_length=args.max_query_length,
-        max_prompt_length=args.max_prompt_length,
-        max_new_tokens=args.max_new_tokens,
-        fp16=args.fp16,
-        int8=args.int8,
-        tf=args.tf,
-        device=args.device,
-        torch_compile=args.torch_compile,
-        # verbose=args.verbose,
-    )
-
-    generated = generator.generate(
+        generated = generator.generate(
         documents=dataset['text'],
         doc_ids=dataset['doc_id'],
         batch_size=args.batch_size,
-    )
-    dataset['query'] = [example['query'] for example in generated]
-    dataset['log_probs'] = [example['log_probs'] for example in generated]
-    dataset['prompt_text'] = [example['prompt_text'] for example in generated]
-    dataset['doc_id'] = [example['doc_id'] for example in generated]
-    dataset['fewshot_examples'] = [example['fewshot_examples'] for example in generated]
-    dataset.to_json(args.output, orient='records', lines=True)
+        )
+        logging.info(generated)
+
+        dataset['query'] = [example['query'] for example in generated]
+        dataset['log_probs'] = [example['log_probs'] for example in generated]
+        dataset['prompt_text'] = [example['prompt_text'] for example in generated]
+        dataset['doc_id'] = [example['doc_id'] for example in generated]
+        dataset['fewshot_examples'] = [example['fewshot_examples'] for example in generated]
+        logging.info(dataset)
+
+        dataset.to_json(args.output, orient='records', lines=True)
+
+        del generator
+        empty_cache()
+
+    except Exception as e:
+        logging.info(f'An exception occurred when generating queries : \n\t{e}')
+        raise e
