@@ -140,23 +140,41 @@ def evaluate(dataset:str, trec_path:str, output_path:str):
 
 def main(args):
     # Create path where to save data such as queries generated. 
+
+    # Start with data dir if it does not exist
+    if not os.path.exists(os.path.join(os.curdir, 'data')):
+        os.mkdir(os.path.join(os.curdir, 'data'))
+    
+    # Separate directory per dataset
     data_path = os.path.join(os.curdir, 'data', args.dataset)
     
+    # Possible prompt templates
     prompt_options = ['inpars', 'promptagator'] #'inpars-gbq']
+    # Possible filtering options (inparsV1, inparsV2 respectively)
     filter_options = ['scores', 'reranker']
 
+    # Set up directory structure for saving data
+    if not os.path.exists(data_path):
+        # Create dataset specific dir
+        os.mkdir(data_path)
+    
+    # Create generationLLM specific dir
+    data_path = os.path.join(data_path, args.generationLLM.split('/')[-1])
     if not os.path.exists(data_path):
         os.mkdir(data_path)
-        for opt in filter_options:
+        # Create directory per prompt template (promptagate and inpars)
+        for opt in prompt_options:
             os.mkdir(os.path.join(data_path, opt))
+            # For each filter option, create directory. 
+            for filter_opt in filter_options:
+                os.mkdir(os.path.join(data_path, opt, filter_opt))
 
+
+    # For each prompt type, save queries in directory. 
     for prompt_type in prompt_options:
-        prompt_path = os.path.join(data_path, prompt_type)
-        query_output_path = os.path.join(prompt_path, f'{prompt_type}-queries.jsonl')
+        query_output_path = os.path.join(data_path, prompt_type, f'{prompt_type}-queries.jsonl')
 
-        if not os.path.exists(prompt_path):
-            os.mkdir(prompt_path)
-        elif os.path.exists(query_output_path):
+        if os.path.exists(query_output_path):
             print(f'{prompt_type} has already been created. Continuing...')
             continue
         
