@@ -1,3 +1,6 @@
+import os
+os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
+
 import torch
 from functools import partial
 from datasets import load_dataset
@@ -220,6 +223,7 @@ if __name__ == "__main__":
         train_dataset=dataset['train'],
         data_collator=data_collator,
     )
+    torch.cuda.empty_cache()
     train_metrics = trainer.train()
     trainer.save_model(training_args.output_dir)
     trainer.save_state()

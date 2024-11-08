@@ -150,3 +150,13 @@ cache/
 
 # snellius
 logs/
+# avoid logging wandb files
+wandb/
+reranker/
+
+# trec-covid dataset ouputs
+tmp-run-trec-covid.txt
+topics-trec-covid.tsv
+trec-covid-queries-filtered.jsonl
+trec-covid-queries.jsonl
+trec-covid-triples.tsv

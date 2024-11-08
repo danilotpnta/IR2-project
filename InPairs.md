@@ -83,6 +83,19 @@ python -m inpars.train \
         --output_dir="./reranker/" \
         --max_steps="156"
 ```
+For memory CUDA constraints, you can use:
+
+```bash
+python -m inpars.train \
+        --triples="trec-covid-triples.tsv" \
+        --base_model="castorini/monot5-3b-msmarco-10k" \
+        --output_dir="./reranker/" \
+        --max_steps="156" \
+        --per_device_train_batch_size=2 \
+        --gradient_accumulation_steps=16 \
+        --fp16 \
+        --learning_rate=1e-4
+```
 
 You can choose different base models, hyperparameters, and training strategies that are supported by [HuggingFace Trainer](https://huggingface.co/docs/transformers/main_classes/trainer).
 
