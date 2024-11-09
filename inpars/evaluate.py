@@ -13,8 +13,10 @@ def run_trec_eval(run_file, qrels_file, relevance_threshold=1, remove_unjudged=F
         "pyserini.eval.trec_eval",
         "-c",
         f"-l {relevance_threshold}",
-        "-m" , "all_trec",
-        "-m", "judged.10",
+        "-m",
+        "all_trec",
+        "-m",
+        "judged.10",
     ]
 
     if remove_unjudged:
@@ -66,9 +68,11 @@ if __name__ == "__main__":
         run = TRECRun(args.dataset)
         run_file = run.run_file
 
-    results = run_trec_eval(run_file, qrels_file, args.relevance_threshold, args.remove_unjudged)
+    results = run_trec_eval(
+        run_file, qrels_file, args.relevance_threshold, args.remove_unjudged
+    )
     if args.json:
         print(json.dumps(results))
     else:
-        for (metric, value) in sorted(results.items()):
+        for metric, value in sorted(results.items()):
             print(f"{metric}: {value}")

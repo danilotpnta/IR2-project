@@ -3,20 +3,20 @@ import ftfy
 import yaml
 import random
 
-with open(f'{os.path.dirname(__file__)}/prompts/templates.yaml') as f:
+with open(f"{os.path.dirname(__file__)}/prompts/templates.yaml") as f:
     templates = yaml.safe_load(f)
 
 
 class Prompt:
     def __init__(
-            self,
-            template=None,
-            examples=None,
-            tokenizer=None,
-            max_doc_length=None,
-            max_query_length=None,
-            max_prompt_length=None,
-            max_new_token=16,
+        self,
+        template=None,
+        examples=None,
+        tokenizer=None,
+        max_doc_length=None,
+        max_query_length=None,
+        max_prompt_length=None,
+        max_new_token=16,
     ):
         self.template = template
         self.examples = examples
@@ -31,23 +31,23 @@ class Prompt:
         if name in templates:
             template = templates[name]
             prompt_class = {
-                'dynamic': DynamicPrompt,
-                'static': StaticPrompt,
-            }[template['mode']]
-            return prompt_class(template=template['template'], *args, **kwargs)
+                "dynamic": DynamicPrompt,
+                "static": StaticPrompt,
+            }[template["mode"]]
+            return prompt_class(template=template["template"], *args, **kwargs)
         else:
             if not os.path.exists(name):
-                raise FileNotFoundError(f'Prompt file {name} was not found!')
+                raise FileNotFoundError(f"Prompt file {name} was not found!")
 
             with open(name) as f:
                 return StaticPrompt(template=f.read(), *args, **kwargs)
-    
+
     def _truncate_max_doc_length(self, document):
         if self.max_doc_length:
             document = self.tokenizer.decode(
-                self.tokenizer(document, truncation=True, max_length=self.max_doc_length)[
-                    "input_ids"
-                ]
+                self.tokenizer(
+                    document, truncation=True, max_length=self.max_doc_length
+                )["input_ids"]
             )
         return document
 
@@ -84,9 +84,9 @@ class DynamicPrompt(Prompt):
         document = ftfy.fix_text(document)
         if self.max_doc_length:
             document = self.tokenizer.decode(
-                self.tokenizer(document, truncation=True, max_length=self.max_doc_length)[
-                    "input_ids"
-                ]
+                self.tokenizer(
+                    document, truncation=True, max_length=self.max_doc_length
+                )["input_ids"]
             )
 
         prompt += self.template.format(document=document, query="").rstrip()
@@ -100,12 +100,12 @@ class DynamicPrompt(Prompt):
                 )
 
         return prompt
-    
+
     def _truncate_max_query_length(self, query):
         if self.max_query_length:
-                query = self.tokenizer.decode(
-                    self.tokenizer(query, truncation=True, max_length=self.max_query_length)[
-                        "input_ids"
-                    ]
-                )
+            query = self.tokenizer.decode(
+                self.tokenizer(
+                    query, truncation=True, max_length=self.max_query_length
+                )["input_ids"]
+            )
         return query
