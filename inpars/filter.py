@@ -5,6 +5,8 @@ from tqdm import tqdm
 from .rerank import Reranker
 from .dataset import load_corpus
 
+from torch.cuda import empty_cache
+
 def read_synthetic_data(args):
     rows = []
     with open(args.input, 'r') as fin:
@@ -76,4 +78,8 @@ if __name__ == '__main__':
     with open(args.output, 'w') as fout:
         for row in dataset[:args.keep_top_k]:
             fout.write(json.dumps(row) + '\n')
+
+    
+    del model 
+    empty_cache()
     print("Done!")

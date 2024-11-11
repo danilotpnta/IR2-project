@@ -261,3 +261,6 @@ if __name__ == "__main__":
     run = utils.TRECRun(input_run)
     run.rerank(model, queries, corpus, top_k=args.top_k)
     run.save(args.output_run)
+
+    del model 
+    torch.cuda.empty_cache()
