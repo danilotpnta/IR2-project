@@ -1,8 +1,6 @@
 import ftfy
 import json
-import random
-import pandas as pd
-from tqdm.auto import tqdm
+from tqdm import tqdm
 
 
 def load_corpus(dataset_name, source="ir_datasets"):
@@ -52,7 +50,7 @@ def load_corpus(dataset_name, source="ir_datasets"):
             )
             docs_ids.append(doc["_id"])
 
-    return pd.DataFrame({"doc_id": docs_ids, "text": texts})
+    return {"doc_id": docs_ids, "text": texts}
 
 
 def load_queries(dataset_name, source="ir_datasets"):

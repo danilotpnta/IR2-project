@@ -52,6 +52,7 @@ if __name__ == "__main__":
             dataset = pd.read_json(args.input, lines=True)
     else:
         dataset = load_corpus(args.dataset, args.dataset_source)
+        dataset = pd.DataFrame(dataset)
 
     if args.max_generations > len(dataset):
         args.max_generations = len(dataset)
