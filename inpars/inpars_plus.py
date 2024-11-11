@@ -121,6 +121,7 @@ class InPars:
         self.device = device or ("cuda" if torch.cuda.is_available() else "cpu")
         self.verbose = verbose
         self.tf = tf
+        self.max_total_length = 2048
 
         self.tokenizer = AutoTokenizer.from_pretrained(base_model, padding_side="left")
         self.tokenizer.pad_token = self.tokenizer.eos_token
@@ -150,6 +151,11 @@ class InPars:
             self.model.to(self.device)
             self.model.eval()
 
+        if self.max_prompt_length is None or self.max_prompt_length > (
+            self.max_total_length - self.max_new_tokens
+        ):
+            self.max_prompt_length = self.max_total_length - self.max_new_tokens
+
         self.fewshot_examples = load_examples(corpus, self.n_fewshot_examples)
         self.prompter = Prompt.load(
             name=prompt,
@@ -160,6 +166,14 @@ class InPars:
             max_prompt_length=self.max_prompt_length,
             max_new_token=self.max_new_tokens,
         )
+
+    def _ensure_length_constraints(self, tokens):
+        if tokens["input_ids"].shape[-1] > self.max_prompt_length:
+            tokens["input_ids"] = tokens["input_ids"][:, -self.max_prompt_length :]
+            tokens["attention_mask"] = tokens["attention_mask"][
+                :, -self.max_prompt_length :
+            ]
+        return tokens
 
     def _update_cache(self, cache_file, new_prompts, new_doc_ids):
         try:
@@ -213,7 +227,6 @@ class InPars:
         prompts_csv = cache_dir / f"{cache_name}_prompts.csv"
         results_csv = cache_dir / f"{cache_name}_results.csv"
 
-        # Try to load cached prompts
         prompts = []
         cached_indices = set()
         if cache_file.exists():
@@ -233,25 +246,19 @@ class InPars:
                             if doc_id in prompt_map:
                                 prompts.append(prompt_map[doc_id])
                                 cached_indices.add(idx)
-
-                    if self.verbose:
-                        print(f"Loaded {len(cached_indices)} prompts from cache")
             except Exception as e:
                 print(f"Error loading cache: {e}")
                 prompts = []
                 cached_indices = set()
 
-        disable_pbar = len(documents) <= 1000
         new_prompts = []
         new_doc_ids = []
+        disable_pbar = len(documents) <= 1000
 
-        chunk_size = 100
         for chunk_start in tqdm(
-            range(0, len(documents), chunk_size),
-            disable=disable_pbar,
-            desc="Building prompts",
+            range(0, len(documents), 100), disable=disable_pbar, desc="Building prompts"
         ):
-            chunk_end = min(chunk_start + chunk_size, len(documents))
+            chunk_end = min(chunk_start + 100, len(documents))
             chunk_docs = documents[chunk_start:chunk_end]
             chunk_ids = doc_ids[chunk_start:chunk_end]
 
@@ -266,7 +273,6 @@ class InPars:
                     new_doc_ids.append(doc_id)
                     prompts.append(prompt)
 
-            # Periodic cache update
             if len(new_prompts) >= 1000:
                 self._update_cache(cache_file, new_prompts, new_doc_ids)
                 if save_csv:
@@ -274,85 +280,94 @@ class InPars:
                 new_prompts = []
                 new_doc_ids = []
 
-        # Final cache update
         if new_prompts:
             self._update_cache(cache_file, new_prompts, new_doc_ids)
             if save_csv:
                 self._save_prompts_csv(prompts_csv, new_doc_ids, new_prompts)
 
-        # Generate queries
         results = []
         for i in tqdm(range(0, len(prompts), batch_size), desc="Generating queries"):
-            if i % (batch_size * 10) == 0:
-                torch.cuda.empty_cache()
+            try:
+                if i % (batch_size * 10) == 0:
+                    torch.cuda.empty_cache()
 
-            batch_prompts = prompts[i : i + batch_size]
-            batch_docs = documents[i : i + batch_size]
-            batch_doc_ids = doc_ids[i : i + batch_size]
+                batch_prompts = prompts[i : i + batch_size]
+                batch_docs = documents[i : i + batch_size]
+                batch_doc_ids = doc_ids[i : i + batch_size]
 
-            tokens = self.tokenizer(
-                batch_prompts,
-                padding=True,
-                truncation=True,
-                return_tensors="pt",
-                pad_to_multiple_of=8 if not self.tf else None,
-            )
-
-            if not self.tf:
-                tokens = {k: v.to(self.device) for k, v in tokens.items()}
-
-            outputs = self.model.generate(
-                input_ids=tokens["input_ids"],
-                attention_mask=tokens["attention_mask"],
-                max_new_tokens=self.max_new_tokens,
-                output_scores=True,
-                eos_token_id=198,
-                bos_token_id=self.tokenizer.bos_token_id,
-                pad_token_id=self.tokenizer.pad_token_id,
-                return_dict_in_generate=True,
-                **generate_kwargs,
-            )
-
-            gen_sequences = outputs.sequences[:, tokens["input_ids"].shape[-1] :]
-            pad_mask = gen_sequences == self.tokenizer.pad_token_id
-
-            with torch.no_grad():
-                probs = torch.stack(outputs.scores, dim=1).log_softmax(dim=-1)
-                prob_values, _ = probs.max(dim=2)
-
-            sequence_scores = [
-                prob_values[i][~pad_mask[i]].tolist()[:-1]
-                for i in range(len(prob_values))
-            ]
-
-            preds = self.tokenizer.batch_decode(
-                gen_sequences,
-                skip_special_tokens=True,
-            )
-
-            batch_results = [
-                {
-                    "query": pred.strip(),
-                    "log_probs": scores,
-                    "prompt_text": prompt,
-                    "doc_id": doc_id,
-                    "doc_text": doc,
-                    "fewshot_examples": [
-                        example[0] for example in self.fewshot_examples
-                    ],
-                }
-                for pred, scores, prompt, doc_id, doc in zip(
-                    preds, sequence_scores, batch_prompts, batch_doc_ids, batch_docs
+                tokens = self.tokenizer(
+                    batch_prompts,
+                    padding=True,
+                    truncation=True,
+                    max_length=self.max_prompt_length,
+                    return_tensors="pt",
+                    pad_to_multiple_of=8 if not self.tf else None,
                 )
-            ]
 
-            results.extend(batch_results)
+                tokens = self._ensure_length_constraints(tokens)
+                if not self.tf:
+                    tokens = {k: v.to(self.device) for k, v in tokens.items()}
 
-            # Periodic save
-            if save_csv and len(results) % (batch_size * 10) == 0:
-                self._save_results_csv(results_csv, results)
+                generation_kwargs = {
+                    "max_new_tokens": min(
+                        self.max_new_tokens,
+                        self.max_total_length - tokens["input_ids"].shape[1],
+                    ),
+                    "output_scores": True,
+                    "eos_token_id": 198,
+                    "bos_token_id": self.tokenizer.bos_token_id,
+                    "pad_token_id": self.tokenizer.pad_token_id,
+                    "return_dict_in_generate": True,
+                    **generate_kwargs,
+                }
 
-        # Final save
+                outputs = self.model.generate(
+                    input_ids=tokens["input_ids"],
+                    attention_mask=tokens["attention_mask"],
+                    **generation_kwargs,
+                )
+
+                gen_sequences = outputs.sequences[:, tokens["input_ids"].shape[-1] :]
+                pad_mask = gen_sequences == self.tokenizer.pad_token_id
+
+                with torch.no_grad():
+                    probs = torch.stack(outputs.scores, dim=1).log_softmax(dim=-1)
+                    prob_values, _ = probs.max(dim=2)
+
+                sequence_scores = [
+                    prob_values[i][~pad_mask[i]].tolist()[:-1]
+                    for i in range(len(prob_values))
+                ]
+
+                preds = self.tokenizer.batch_decode(
+                    gen_sequences, skip_special_tokens=True
+                )
+
+                batch_results = [
+                    {
+                        "query": pred.strip(),
+                        "log_probs": scores,
+                        "prompt_text": prompt,
+                        "doc_id": doc_id,
+                        "doc_text": doc,
+                        "fewshot_examples": [
+                            example[0] for example in self.fewshot_examples
+                        ],
+                    }
+                    for pred, scores, prompt, doc_id, doc in zip(
+                        preds, sequence_scores, batch_prompts, batch_doc_ids, batch_docs
+                    )
+                ]
+
+                results.extend(batch_results)
+
+                if save_csv and len(results) % (batch_size * 10) == 0:
+                    self._save_results_csv(results_csv, results)
+
+            except RuntimeError as e:
+                print(f"Error in batch {i}: {str(e)}")
+                continue
+
         if save_csv:
             self._save_results_csv(results_csv, results)
 
