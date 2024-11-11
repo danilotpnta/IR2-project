@@ -68,6 +68,7 @@ if __name__ == "__main__":
         tf=args.tf,
         device=args.device,
         torch_compile=args.torch_compile,
+        max_generations=args.max_generations,
         # verbose=args.verbose,
     )
 

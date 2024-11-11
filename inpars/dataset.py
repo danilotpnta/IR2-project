@@ -1,15 +1,42 @@
+import os
 import ftfy
 import json
-import random
 import pandas as pd
 from tqdm.auto import tqdm
+import ir_datasets
+import pyarrow.parquet as pq
 
-def load_corpus(dataset_name, source='ir_datasets'):
+def load_corpus(dataset_name, source='ir_datasets', chunk_size=10000, summary_dataset=False):
+
+    cache_dir = ir_datasets.util.home_path()
+    parquet_path = os.path.join(cache_dir, f"beir/{dataset_name}/docs.parquet")
+    
+    if os.path.exists(parquet_path):
+        print(f"Found cached Parquet dataset at: {parquet_path}.")
+
+        parquet_file = pq.ParquetFile(parquet_path)
+        num_rows = parquet_file.metadata.num_rows
+        rows = []
+        for batch in tqdm(parquet_file.iter_batches(batch_size=chunk_size), total=num_rows // chunk_size, desc=f"Loading {num_rows} documents"):
+            rows.append(batch.to_pandas())
+        corpus_df = pd.concat(rows, ignore_index=True)
+
+        if summary_dataset:
+            text_lengths = corpus_df['text'].str.len()
+            memory_usage = corpus_df.memory_usage(deep=True).sum() / (1024 ** 2)  
+            print(f"\n-- Dataset Summary: {dataset_name.capitalize()} --")
+            print(f"Total documents: {len(corpus_df)}")
+            print(f"Average text length: {text_lengths.mean():.2f} characters")
+            print(f"Text length [min - max]: [{text_lengths.min()} - {text_lengths.max()}] characters")
+            print(f"Memory usage: {memory_usage:.2f} MB\n")
+                
+        return corpus_df
+
     texts = []
     docs_ids = []
 
     if source == 'ir_datasets':
-        import ir_datasets
+        print(f"Loading corpus from ir_datasets for dataset: {dataset_name}")
 
         identifier = f'beir/{dataset_name}'
         if identifier in ir_datasets.registry._registered:
@@ -18,7 +45,7 @@ def load_corpus(dataset_name, source='ir_datasets'):
             dataset = ir_datasets.load(dataset_name)
 
         for doc in tqdm(
-            dataset.docs_iter(), total=dataset.docs_count(), desc="Loading documents from ir-datasets"
+            dataset.docs_iter(), total=dataset.docs_count(), desc="Loading documents from ir_datasets"
         ):
             texts.append(
                 ftfy.fix_text(
@@ -48,10 +75,18 @@ def load_corpus(dataset_name, source='ir_datasets'):
                 )
             )
             docs_ids.append(doc['_id'])
+    
 
-    return pd.DataFrame({'doc_id': docs_ids, 'text': texts})
+    corpus_df = pd.DataFrame({'doc_id': docs_ids, 'text': texts})
+    os.makedirs(os.path.dirname(parquet_path), exist_ok=True) 
+    corpus_df.to_parquet(parquet_path, engine="pyarrow")
+    print(f"Corpus saved to {parquet_path}")
+
+    return corpus_df
 
 
+
+    
 def load_queries(dataset_name, source='ir_datasets'):
     queries = {}
 

@@ -47,6 +47,7 @@ class InPars:
         tf=False,
         torch_compile=False,
         verbose=False,
+        max_generations=None,
     ):
         self.corpus = corpus
         self.prompt = prompt
@@ -59,6 +60,7 @@ class InPars:
         self.verbose = verbose
         self.tf = tf
         self.max_total_length = 2048
+        self.max_generations = max_generations
 
         self.tokenizer = AutoTokenizer.from_pretrained(base_model, padding_side="left")
         self.tokenizer.pad_token = self.tokenizer.eos_token
@@ -105,18 +107,25 @@ class InPars:
             max_new_token=self.max_new_tokens,
         )
 
-    def _setup_cache_structure(self, cache_dir: str, cache_name: str = 'cache') -> tuple:
+    def _setup_cache_structure(
+        self,
+        max_generations: int = 100_000,
+        cache_dir: str = "cache",
+    ):
         cache_base = Path(cache_dir)
         dataset_dir = cache_base / self.corpus
-        prompt_dir = dataset_dir / self.prompt if self.prompt else dataset_dir
-
+        
+        if max_generations != 100_000:
+            prompt_dir = dataset_dir / self.prompt / f"debug-{max_generations}"
+        else:
+            prompt_dir = dataset_dir / self.prompt
         prompt_dir.mkdir(parents=True, exist_ok=True)
 
-        cache_file = prompt_dir / f"{cache_name}.pkl"
-        prompts_csv = prompt_dir / f"{cache_name}_prompts.csv"
-        queries_csv = prompt_dir / f"{cache_name}_queries.csv"
+        cache_file = prompt_dir / f"{cache_dir}.pkl"
+        prompts_csv = prompt_dir / f"{cache_dir}_prompts.csv"
+        queries_csv = prompt_dir / f"{cache_dir}_queries.csv"
 
-        return prompt_dir, cache_file, prompts_csv, queries_csv
+        return cache_file, prompts_csv, queries_csv
 
     def _ensure_length_constraints(self, tokens):
         if tokens["input_ids"].shape[-1] > self.max_prompt_length:
@@ -165,15 +174,14 @@ class InPars:
         documents,
         doc_ids,
         batch_size=1,
-        cache_dir="cache",
         save_csv=True,
         **generate_kwargs,
     ):
         torch.cuda.empty_cache()
 
         # Setup cache directory structure
-        cache_dir, cache_file, prompts_csv, queries_csv = self._setup_cache_structure(
-            cache_dir
+        cache_file, prompts_csv, queries_csv = self._setup_cache_structure(
+            max_generations=self.max_generations
         )
 
         prompts = []
