@@ -1,9 +1,17 @@
+import pickle
 import ftfy
 import json
 from tqdm import tqdm
+import os
 
 
 def load_corpus(dataset_name, source="ir_datasets"):
+    cache_path = os.path.join(os.curdir, "cache", f"{dataset_name}-{source}.pkl")
+    if os.path.exists(cache_path):
+        print(f"Loading cached documents from {cache_path}")
+        with open(cache_path, "rb") as f:
+            return pickle.load(f)
+
     texts = []
     docs_ids = []
 
@@ -50,10 +58,18 @@ def load_corpus(dataset_name, source="ir_datasets"):
             )
             docs_ids.append(doc["_id"])
 
+    with open(cache_path, "wb") as f:
+        pickle.dump({"doc_id": docs_ids, "text": texts}, f)
     return {"doc_id": docs_ids, "text": texts}
 
 
 def load_queries(dataset_name, source="ir_datasets"):
+    cache_path = os.path.join(os.curdir, "cache", f"{dataset_name}-queries.pkl")
+    if os.path.exists(cache_path):
+        print(f"Loading cached queries from {cache_path}")
+        with open(cache_path, "rb") as f:
+            return pickle.load(f)
+
     queries = {}
 
     if source == "ir_datasets":
@@ -71,4 +87,6 @@ def load_queries(dataset_name, source="ir_datasets"):
                 data["title"]
             )  # assume 'title' is the query
 
+    with open(cache_path, "wb") as f:
+        pickle.dump(queries, f)
     return queries
