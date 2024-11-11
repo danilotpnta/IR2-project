@@ -158,3 +158,5 @@ topics-trec-covid.tsv
 trec-covid-queries-filtered.jsonl
 trec-covid-queries.jsonl
 trec-covid-triples.tsv
+cache_plus/
+trec-covid-queries_HF.jsonl
