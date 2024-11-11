@@ -3,7 +3,7 @@ import argparse
 import pandas as pd
 from .dataset import load_corpus
 from transformers import set_seed
-from .inpars import InPars
+from .inpars_plus import InPars
 
 import logging
 import sys
