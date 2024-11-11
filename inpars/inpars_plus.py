@@ -10,73 +10,9 @@ import urllib.error
 import json
 import pickle
 from pathlib import Path
+from .prompt import Prompt
 
 
-class Prompt:
-    @staticmethod
-    def load(
-        name,
-        examples,
-        tokenizer,
-        max_query_length=None,
-        max_doc_length=None,
-        max_prompt_length=None,
-        max_new_token=None,
-    ):
-        return SimplePrompt(
-            examples=examples,
-            tokenizer=tokenizer,
-            max_query_length=max_query_length,
-            max_doc_length=max_doc_length,
-            max_prompt_length=max_prompt_length,
-            max_new_token=max_new_token,
-        )
-
-
-class SimplePrompt:
-    def __init__(
-        self,
-        examples,
-        tokenizer,
-        max_query_length=None,
-        max_doc_length=None,
-        max_prompt_length=None,
-        max_new_token=None,
-    ):
-        self.examples = examples
-        self.tokenizer = tokenizer
-        self.max_query_length = max_query_length
-        self.max_doc_length = max_doc_length
-        self.max_prompt_length = max_prompt_length
-        self.max_new_token = max_new_token
-
-    def build(self, document, n_examples=None):
-        examples = (
-            random.sample(self.examples, n_examples) if n_examples else self.examples
-        )
-        prompt = ""
-
-        for query_id, doc_id, query, doc in examples:
-            if self.max_doc_length:
-                doc = " ".join(doc.split()[: self.max_doc_length])
-            if self.max_query_length:
-                query = " ".join(query.split()[: self.max_query_length])
-            prompt += f"Document: {doc}\nQuery: {query}\n\n"
-
-        if self.max_doc_length:
-            document = " ".join(document.split()[: self.max_doc_length])
-        prompt += f"Document: {document}\nQuery:"
-
-        if self.max_prompt_length:
-            tokens = self.tokenizer.encode(prompt)
-            if len(tokens) > self.max_prompt_length:
-                tokens = tokens[-self.max_prompt_length :]
-                prompt = self.tokenizer.decode(tokens)
-
-        return prompt
-
-
-# TODO: Cache the Examples Locally
 def load_examples(corpus, n_fewshot_examples):
     try:
         df = pd.read_json(
@@ -113,6 +49,7 @@ class InPars:
         verbose=False,
     ):
         self.corpus = corpus
+        self.prompt = prompt
         self.max_doc_length = max_doc_length
         self.max_query_length = max_query_length
         self.max_prompt_length = max_prompt_length
@@ -125,6 +62,7 @@ class InPars:
 
         self.tokenizer = AutoTokenizer.from_pretrained(base_model, padding_side="left")
         self.tokenizer.pad_token = self.tokenizer.eos_token
+
         model_kwargs = {"revision": revision}
         if fp16:
             model_kwargs.update(
@@ -167,6 +105,19 @@ class InPars:
             max_new_token=self.max_new_tokens,
         )
 
+    def _setup_cache_structure(self, cache_dir: str, cache_name: str = 'cache') -> tuple:
+        cache_base = Path(cache_dir)
+        dataset_dir = cache_base / self.corpus
+        prompt_dir = dataset_dir / self.prompt if self.prompt else dataset_dir
+
+        prompt_dir.mkdir(parents=True, exist_ok=True)
+
+        cache_file = prompt_dir / f"{cache_name}.pkl"
+        prompts_csv = prompt_dir / f"{cache_name}_prompts.csv"
+        queries_csv = prompt_dir / f"{cache_name}_queries.csv"
+
+        return prompt_dir, cache_file, prompts_csv, queries_csv
+
     def _ensure_length_constraints(self, tokens):
         if tokens["input_ids"].shape[-1] > self.max_prompt_length:
             tokens["input_ids"] = tokens["input_ids"][:, -self.max_prompt_length :]
@@ -175,7 +126,7 @@ class InPars:
             ]
         return tokens
 
-    def _update_cache(self, cache_file, new_prompts, new_doc_ids):
+    def _update_cache_prompts(self, cache_file, new_prompts, new_doc_ids):
         try:
             cache_data = {"prompts": [], "doc_ids": []}
             if cache_file.exists():
@@ -187,7 +138,6 @@ class InPars:
 
             with open(cache_file, "wb") as f:
                 pickle.dump(cache_data, f)
-
         except Exception as e:
             print(f"Error updating cache: {e}")
 
@@ -198,7 +148,7 @@ class InPars:
         except Exception as e:
             print(f"Error saving prompts CSV: {e}")
 
-    def _save_results_csv(self, csv_path, results):
+    def _save_queries_csv(self, csv_path, results):
         try:
             df = pd.DataFrame(results)
             df["log_probs"] = df["log_probs"].apply(lambda x: ",".join(map(str, x)))
@@ -207,7 +157,7 @@ class InPars:
             )
             df.to_csv(csv_path, index=False)
         except Exception as e:
-            print(f"Error saving results CSV: {e}")
+            print(f"Error saving queries CSV: {e}")
 
     @torch.no_grad()
     def generate(
@@ -215,17 +165,16 @@ class InPars:
         documents,
         doc_ids,
         batch_size=1,
-        cache_dir="cache_plus",
-        cache_name="prompts_cache",
+        cache_dir="cache",
         save_csv=True,
         **generate_kwargs,
     ):
         torch.cuda.empty_cache()
-        cache_dir = Path(cache_dir)
-        cache_dir.mkdir(exist_ok=True)
-        cache_file = cache_dir / f"{cache_name}.pkl"
-        prompts_csv = cache_dir / f"{cache_name}_prompts.csv"
-        results_csv = cache_dir / f"{cache_name}_results.csv"
+
+        # Setup cache directory structure
+        cache_dir, cache_file, prompts_csv, queries_csv = self._setup_cache_structure(
+            cache_dir
+        )
 
         prompts = []
         cached_indices = set()
@@ -274,14 +223,14 @@ class InPars:
                     prompts.append(prompt)
 
             if len(new_prompts) >= 1000:
-                self._update_cache(cache_file, new_prompts, new_doc_ids)
+                self._update_cache_prompts(cache_file, new_prompts, new_doc_ids)
                 if save_csv:
                     self._save_prompts_csv(prompts_csv, new_doc_ids, new_prompts)
                 new_prompts = []
                 new_doc_ids = []
 
         if new_prompts:
-            self._update_cache(cache_file, new_prompts, new_doc_ids)
+            self._update_cache_prompts(cache_file, new_prompts, new_doc_ids)
             if save_csv:
                 self._save_prompts_csv(prompts_csv, new_doc_ids, new_prompts)
 
@@ -338,7 +287,6 @@ class InPars:
                     prob_values[i][~pad_mask[i]].tolist()[:-1]
                     for i in range(len(prob_values))
                 ]
-
                 preds = self.tokenizer.batch_decode(
                     gen_sequences, skip_special_tokens=True
                 )
@@ -362,13 +310,13 @@ class InPars:
                 results.extend(batch_results)
 
                 if save_csv and len(results) % (batch_size * 10) == 0:
-                    self._save_results_csv(results_csv, results)
+                    self._save_queries_csv(queries_csv, results)
 
             except RuntimeError as e:
                 print(f"Error in batch {i}: {str(e)}")
                 continue
 
         if save_csv:
-            self._save_results_csv(results_csv, results)
+            self._save_queries_csv(queries_csv, results)
 
         return results
