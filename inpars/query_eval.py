@@ -127,7 +127,7 @@ class QueryEval(torch.nn.Module):
                             for model_name in self.doc_embeddings]
 
         if doc_indices is not None:
-            doc_embeddings = [self.doc_embeddings[model_name] for model_name in self.doc_embeddings]
+            doc_embeddings = [self.doc_embeddings[model_name][doc_indices] for model_name in self.doc_embeddings]
         else:
             doc_embeddings = [emb for emb in self.doc_embeddings.values()]
 
@@ -141,9 +141,9 @@ class QueryEval(torch.nn.Module):
                 # BM25Okapi uses np arrays
                 similarities.append(
                     torch.tensor(self.models["bm25"].get_batch_scores(q.split(), doc_indices), device='cpu').squeeze())
-        logger.info("similarities: %s", similarities)
+        logger.debug("similarities: %s", similarities)
         similarities = torch.stack(similarities).to(self.device)
-        logger.info("after stacking: %s\nshape: %s", similarities, similarities.shape)
+        logger.debug("after stacking: %s\nshape: %s", similarities, similarities.shape)
         # compute weighted average of similarities
         logger.debug("computing mean, with sim\n %s\nweights\n%s\n and shapes %s  --  %s",
                     str(similarities), str(self.weights), similarities.shape, self.weights.shape)
