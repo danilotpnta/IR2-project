@@ -75,8 +75,9 @@ def generate_queries(prompt_type:str, dataset:str, model:str, output_path:str) -
             "--dataset_source=ir_datasets",
             f"--base_model={model}",
             f"--output={output_path}",
-            '--batch_size=4',
-            "--fp16",
+            f"--max_generations=1200",    # smaller experiment !
+            '--batch_size=4',       
+            "--fp16",                     # smaller experiment!!
         ],  stdout=subprocess.PIPE,
             text=True
             )
@@ -98,7 +99,7 @@ def filter_queries(query_path:str, dataset:str, output_path:str, filtering_strat
             f"--input={query_path}",
             f"--dataset={dataset}",
             f"--filter_strategy={filtering_strategy}",
-            f"--keep_top_k={4999}",
+            f"--keep_top_k={1000}",
             f"--output={output_path}"
         ],  stdout=subprocess.PIPE,
             text=True
@@ -140,11 +141,7 @@ def train_reranker(triples_path:str, ranker_model:str, output_path):
             f"--triples={triples_path}",
             f"--base_model={ranker_model}",
             f"--output_dir={output_path}",
-            "--max_steps=156",
-            "--per_device_train_batch_size=2",
-            "--gradient_accumulation_steps=16",
-            "--fp16",
-            "--learning_rate=1e-4",
+            "--max_steps=1",            # Smaller experiment!
         ],  stdout=subprocess.PIPE,
             text=True
             )
@@ -165,9 +162,8 @@ def rerank(model_path:str, dataset:str, output_path):
             f"--model={model_path}",
             f"--dataset={dataset}",
             f"--output_run={output_path}",
-            "--device=cuda",
-            "--fp16",
-            "--top_k=100"
+            "--device=CUDA",
+            "--top_k=10"            # Smaller experiment!!
         ],  stdout=subprocess.PIPE,
             text=True
             )

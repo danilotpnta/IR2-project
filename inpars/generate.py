@@ -3,7 +3,7 @@ import argparse
 import pandas as pd
 from .dataset import load_corpus
 from transformers import set_seed
-from .inpars_plus import InPars
+from .inpars import InPars
 
 import logging
 import sys
@@ -32,7 +32,7 @@ if __name__ == "__main__":
     parser.add_argument('--max_query_length', default=200, type=int, required=False)
     parser.add_argument('--max_prompt_length', default=2048, type=int, required=False)
     parser.add_argument('--max_new_tokens', type=int, default=64)
-    parser.add_argument('--max_generations', type=int, default=2000)
+    parser.add_argument('--max_generations', type=int, default=100_000)
     parser.add_argument('--batch_size', type=int, default=1)
     parser.add_argument('--revision', type=str, default=None)
     parser.add_argument('--fp16', action='store_true')
