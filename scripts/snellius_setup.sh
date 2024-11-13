@@ -2,8 +2,14 @@
 
 setup() {
 	module purge
+	module load 2022
+	#module load Python/3.12.3-GCCcore-13.3.0
+
+	# 3.10 necessary for pyserini
+	module load Python/3.10.4-GCCcore-11.3.0
+
+	# Java>.16 necessary dependency, so need to load 2024 as well
 	module load 2024
-	module load Python/3.12.3-GCCcore-13.3.0
 	module load Java/21.0.2
 
 	source "$1/.venv/bin/activate"
