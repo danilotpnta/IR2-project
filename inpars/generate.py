@@ -4,7 +4,9 @@ import pandas as pd
 from .dataset import load_corpus
 from transformers import set_seed
 from .inpars import InPars
+import sys
 
+print(sys.version_info)
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--base_model", default="EleutherAI/gpt-j-6B")
