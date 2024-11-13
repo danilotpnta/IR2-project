@@ -55,8 +55,8 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
     assert args.filter_strategy in ['scores', 'reranker']
-
     dataset = read_synthetic_data(args)
+    model = None 
 
     if args.filter_strategy == "scores":
         for line in tqdm(dataset):
@@ -73,13 +73,20 @@ if __name__ == '__main__':
         query_scores = model.rescore([(synt_item['query'], corpus[synt_item['doc_id']]) for synt_item in dataset])
         for idx, synt_item in enumerate(dataset):
             synt_item['score'] = query_scores[idx]
+        
+
 
     dataset.sort(key=lambda dataset: dataset['score'], reverse=True)
     with open(args.output, 'w') as fout:
         for row in dataset[:args.keep_top_k]:
             fout.write(json.dumps(row) + '\n')
 
+    # Remove model when one is created 
+    if model is not None:
+        del model 
+        empty_cache()
     
-    del model 
-    empty_cache()
     print("Done!")
+
+    
+    
