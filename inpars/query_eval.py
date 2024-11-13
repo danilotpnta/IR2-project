@@ -2,7 +2,6 @@ from typing import List, Optional, Union
 import torch
 from transformers import AutoTokenizer, AutoModel
 from collections import OrderedDict
-from multiprocessing import Pool
 from rank_bm25 import BM25Okapi as BM25
 from tqdm.auto import tqdm
 from pathlib import Path
@@ -72,8 +71,8 @@ class QueryEval(torch.nn.Module):
     def load_dataset(self,
                      documents: Optional[List[str]] = None,
                      cache_path: Optional[Path] = None,
-                     batch_size: int = 32,
-                     num_workers: int = 4) -> None:
+                     batch_size: int = 32
+                     ) -> None:
         """Precompute and store embeddings for the document dataset"""
         if cache_path is not None and cache_path.exists():
             logger.info(f"Loading embeddings from cache: {cache_path}")
@@ -87,11 +86,10 @@ class QueryEval(torch.nn.Module):
                 return BM25([doc.split() for doc in documents])
             return self._get_embeddings(model_name, documents, batch_size)
 
-        logger.info("Computing embeddings using a pool of %d workers", num_workers)
-        with Pool(num_workers) as p:
-            embeddings = p.map(load_for_model, self.models.keys())
+        self.doc_embeddings = {model_name: load_for_model(model_name)
+                               for model_name in self.models.keys()}
 
-        self.doc_embeddings = dict(zip(self.models.keys(), embeddings))
+        logger.info("Computing embeddings for %d models", len(self.models))
         if "bm25" in self.doc_embeddings:
             self.models["bm25"] = self.doc_embeddings["bm25"]
             del self.doc_embeddings["bm25"]
@@ -137,18 +135,22 @@ class QueryEval(torch.nn.Module):
         for q_emb, d_emb in zip(query_embeddings, doc_embeddings):
             q_emb = q_emb.to(self.device)
             d_emb = d_emb.to(self.device)
-            similarities.append(torch.einsum('ij,kj->ik', q_emb, d_emb).cpu())
+            similarities.append(torch.einsum('ij,kj->ik', q_emb, d_emb).cpu().squeeze())
         if "bm25" in self.models:
             for q in query:
                 # BM25Okapi uses np arrays
                 similarities.append(
-                    torch.tensor(self.models["bm25"].get_batch_scores(q.split(), doc_indices), device='cpu'))
-
-        similarities = torch.stack(similarities)
+                    torch.tensor(self.models["bm25"].get_batch_scores(q.split(), doc_indices), device='cpu').squeeze())
+        logger.info("similarities: %s", similarities)
+        similarities = torch.stack(similarities).to(self.device)
+        logger.info("after stacking: %s\nshape: %s", similarities, similarities.shape)
         # compute weighted average of similarities
-        weighted_mean = torch.mean(similarities, dim=0, weights=self.weights)
+        logger.debug("computing mean, with sim\n %s\nweights\n%s\n and shapes %s  --  %s",
+                    str(similarities), str(self.weights), similarities.shape, self.weights.shape)
+        similarities = similarities.T * self.weights
+        weighted_mean = torch.mean(similarities)
 
-        if logging.getLogger().isEnabledFor(logging.DEBUG):
+        if logger.isEnabledFor(logging.DEBUG):
             logger.debug("Overall similarity score: %s", weighted_mean)
             for model_name, sim in zip(
                     filter(lambda m: m != "bm25", self.models.keys()),
@@ -163,6 +165,7 @@ class QueryEval(torch.nn.Module):
         return self.score(query, doc_indices)
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO)
     logger.setLevel(logging.DEBUG)
     documents = [
         "The quick brown fox jumps over the lazy dog.",
@@ -173,7 +176,7 @@ if __name__ == "__main__":
 
     query_eval = QueryEval()
     query_eval.load_dataset(documents)
-    scores = query_eval(query)
+    scores = [query_eval(query, [i]) for i in range(3)]
 
     assert scores[0] > scores[1] and scores[0] > scores[2], "First document should be more relevant than the other two."
     print("Test passed. Scores:", scores)
