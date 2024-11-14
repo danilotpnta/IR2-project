@@ -15,6 +15,9 @@
 #SBATCH --ear-policy=monitoring
 #SBATCH --ear-verbose=1
 
+date
+export HF_HOME="/scratch-shared/$USER"
+
 # make sure the correct modules are used and that the virtual environment is active
 PROJECT_ROOT=/home/$USER/IR2-project
 source $PROJECT_ROOT/scripts/snellius_setup.sh
