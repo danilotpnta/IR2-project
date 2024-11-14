@@ -194,7 +194,10 @@ class QueryEval(torch.nn.Module):
             # and rescale it to [0, 1] so we can regard it as a probability
             # NOTE: this is a coarse approximation because we don't want to compute softmax over the whole corpus.
             #       Instead, we can adjust the weights to make the scores comparable.
-            model_name: torch.cosine_similarity(query_embeddings[model_name], doc_embeddings[model_name]).to(self.device)
+            model_name: 
+                (1 + torch.cosine_similarity(
+                        query_embeddings[model_name], doc_embeddings[model_name]).to(self.device)
+                 ) / 2
             for model_name in self.doc_embeddings.keys()
             if model_name != "bm25"
         })
