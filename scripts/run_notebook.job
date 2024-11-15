@@ -1,0 +1,38 @@
+#!/bin/bash
+
+#SBATCH --partition=gpu_h100
+#SBATCH --gpus=1
+#SBATCH --mem=80G
+#SBATCH --cpus-per-task=18
+#SBATCH --job-name=jupyter_notebook
+#SBATCH --ntasks=1
+#SBATCH --time=10:00:00
+#SBATCH --output=/home/scur2880/IR2-project/scripts/logs/run_jupyter_notebook_%A.out
+
+module purge
+module load 2024
+module load Java/21.0.2
+module load CUDA/12.6.0
+# module load Python/3.11.3-GCCcore-12.3.0
+
+# Activate the virtual environment
+PROJECT_ROOT=/home/$USER/IR2-project
+source $PROJECT_ROOT/IR2-env/bin/activate
+
+PORT=$(shuf -i 5000-5999 -n 1)
+LOGIN_HOST=${SLURM_SUBMIT_HOST}-pub.snellius.surf.nl
+BATCH_HOST=$(hostname)
+
+echo "To connect to the notebook type the following command from your local terminal:"
+echo "ssh -N -J ${USER}@${LOGIN_HOST} ${USER}@${BATCH_HOST} -L ${PORT}:localhost:${PORT}"
+echo
+echo "After connection is established in your local browser go to the address:"
+echo "http://localhost:${PORT}"
+
+# Start Jupyter Notebook
+jupyter notebook --no-browser --port $PORT
+
+# Once you get the log do the following:
+# 1. Run this in terminal: ssh -N -J scur2880@int5-pub.snellius.surf.nl scur2880@gcn49.local.snellius.surf.nl -L 5253:localhost:5253
+# 2. Introduce Password
+# 3. Copy this into browser: http://localhost:5253/tree?token=f801d1acc8d3783acf51e0bebd63dec67281fc7d10635e19
