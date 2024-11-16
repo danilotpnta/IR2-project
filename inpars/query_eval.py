@@ -26,7 +26,7 @@ class QueryEval(torch.nn.Module):
         self.weights = torch.tensor(weights).cpu()
         self.device = device or ('cuda' if torch.cuda.is_available() else 'cpu')
         self.dense_name = dense
-        self.dense =  ( # keep everything on cpu by default to avoid memory issues
+        self.dense =  (
             AutoModel.from_pretrained(dense).to('cpu'),
             AutoTokenizer.from_pretrained(dense)
         )
@@ -85,7 +85,7 @@ class QueryEval(torch.nn.Module):
         self.doc_embeddings = []
         for i in tqdm(range(0, len(documents), batch_size), desc="Computing embeddings"):
             batch = documents[i:i+batch_size]
-            embeddings = self._get_embeddings(batch).cpu()
+            embeddings = self._get_embeddings(batch)
             self.doc_embeddings.append(embeddings)
         # concatenate
         self.doc_embeddings = torch.cat(self.doc_embeddings, dim=1)
@@ -174,11 +174,7 @@ class QueryEval(torch.nn.Module):
         doc_embeddings = self.doc_embeddings[doc_indices].to(self.device)
 
         # embed the queries and load to device.
-        model, tokenizer = self.dense
-        model.to(self.device)
         query_embeddings = self._get_embeddings(queries).to(self.device)
-        # release the dense model
-        model.cpu()
 
         # compute cosine similarity and scale to [0, 1]
         # shape is len(queries)
