@@ -68,7 +68,9 @@ if __name__ == "__main__":
         run = TRECRun(args.dataset)
         run_file = run.run_file
 
+    print(run_file)
     results = run_trec_eval(run_file, qrels_file, args.relevance_threshold, args.remove_unjudged)
+    print(results)
     if args.json:
         print(json.dumps(results))
     else:
