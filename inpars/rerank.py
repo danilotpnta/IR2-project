@@ -80,7 +80,7 @@ class MonoT5Reranker(Reranker):
         if torch_compile:
             self.model = torch.compile(self.model)
         self.model.to(self.device)
-        self.tokenizer = AutoTokenizer.from_pretrained(model_name_or_path)
+        self.tokenizer = AutoTokenizer.from_pretrained(model_name_or_path, use_fast=True)
         self.token_false_id, self.token_true_id = self.get_prediction_tokens(
             model_name_or_path, self.tokenizer, token_false, token_true,
         )
@@ -167,6 +167,7 @@ class MonoBERTReranker(Reranker):
             **model_args,
         )
         self.model.to(self.device)
+        # Currently I use use_fast=True because of errors/warnings, check whether this makes a difference
         self.tokenizer = AutoTokenizer.from_pretrained(model_name_or_path)
 
     @torch.inference_mode()

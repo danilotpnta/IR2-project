@@ -30,6 +30,7 @@ def chunks(lst, n):
 
 class TRECRun:
     def __init__(self, run_file, sep=r"\s+"):
+        print(run_file)
         if not os.path.exists(run_file):
             dest_file = os.path.join(
                 RUNS_CACHE_FOLDER,
@@ -39,7 +40,12 @@ class TRECRun:
             if not os.path.exists(dest_file):
                 os.makedirs(os.path.dirname(os.path.abspath(dest_file)), exist_ok=True)
                 # TODO handle errors ("Entry not found")
-                download(PREBUILT_RUN_URL.format(dataset=run_file), dest_file)
+                try:
+                    download(PREBUILT_RUN_URL.format(dataset=run_file), dest_file)
+
+                except Exception as e:
+                    assert e
+
             run_file = dest_file
 
         self.run_file = run_file
@@ -69,7 +75,7 @@ class TRECRun:
             .apply(lambda x: [queries[x["qid"]], corpus[x["docid"]]], axis=1)
         )
         scores = ranker.rescore(subset.values.tolist())
-        
+
         self.df.loc[subset.index, "score"] = scores
 
         self.df["ranker"] = ranker.name
