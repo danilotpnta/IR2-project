@@ -57,9 +57,16 @@ class InPars:
         if device is None:
             self.device = "cuda" if torch.cuda.is_available() else "cpu"
 
-        self.tokenizer = AutoTokenizer.from_pretrained(
-            base_model, padding_side="left"
-        )
+        if 'llama' in base_model:
+            auth_token = os.environ['HF_TOKEN']
+            self.tokenizer = AutoTokenizer.from_pretrained(
+                base_model, token = auth_token, padding_side='left' 
+            )
+        else:
+            self.tokenizer = AutoTokenizer.from_pretrained(
+                base_model, padding_side="left"
+            )
+
         self.tokenizer.pad_token = self.tokenizer.eos_token
 
         model_kwargs = {"revision": revision}
@@ -83,9 +90,14 @@ class InPars:
             )
             self.model.config.pad_token_id = self.model.config.eos_token_id
         else:
-            self.model = AutoModelForCausalLM.from_pretrained(
-                base_model, **model_kwargs
-            )
+            if 'llama' in base_model:
+                self.model = AutoModelForCausalLM.from_pretrained(
+                    base_model, token = auth_token, **model_kwargs
+                )
+            else:
+                self.model = AutoModelForCausalLM.from_pretrained(
+                    base_model, **model_kwargs
+                )
             if torch_compile:
                 self.model = torch.compile(self.model)
             self.model.to(self.device)
