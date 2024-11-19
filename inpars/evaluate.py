@@ -5,6 +5,7 @@ import subprocess
 from pyserini.search import get_qrels_file
 from .utils import TRECRun
 
+import logging
 
 def run_trec_eval(run_file, qrels_file, relevance_threshold=1, remove_unjudged=False):
     args = [
@@ -19,9 +20,11 @@ def run_trec_eval(run_file, qrels_file, relevance_threshold=1, remove_unjudged=F
 
     if remove_unjudged:
         args.append("-remove-unjudged")
+
     args += [qrels_file, run_file]
 
     result = subprocess.run(args, stdout=subprocess.PIPE)
+
     metrics = {}
     for line in result.stdout.decode("utf-8").split("\n"):
         for metric in [
@@ -50,6 +53,7 @@ if __name__ == "__main__":
     parser.add_argument("--json", action="store_true")
     parser.add_argument("--remove_unjudged", action="store_true")
 
+    # Added output path where the results should be saved.
     parser.add_argument('--output_path', required=True)
     args = parser.parse_args()
 
@@ -68,11 +72,12 @@ if __name__ == "__main__":
         run = TRECRun(args.dataset)
         run_file = run.run_file
 
-    print(run_file)
     results = run_trec_eval(run_file, qrels_file, args.relevance_threshold, args.remove_unjudged)
-    print(results)
+    logging.info(results)
+
     if args.json:
-        print(json.dumps(results))
+        with open(args.output_path, 'w') as wf:
+            json.dump(results, wf)
     else:
         for (metric, value) in sorted(results.items()):
-            print(f"{metric}: {value}")
+            logging.info(f"{metric}: {value}")
