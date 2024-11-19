@@ -38,7 +38,8 @@ def parse_args():
         '--generationLLM',
         choices=[
             'EleutherAI/gpt-j-6B',
-            'meta-llama/Llama-3.2-3B'
+            'meta-llama/Llama-3.2-3B',
+            'meta-llama/Llama-3.1-8B'
         ],
         default='EleutherAI/gpt-j-6B',
         help="Choose query generation model. "
@@ -48,7 +49,8 @@ def parse_args():
         '--reranker',
         choices=[
             'castorini/monot5-3b-msmarco-10k',
-            'castorini/rankllama-v1-7b-lora-passage'
+            'castorini/rankllama-v1-7b-lora-passage',
+            'cross-encoder/ms-marco-MiniLM-L-12-v2'
         ],
         default='castorini/monot5-3b-msmarco-10k',
         help="Choose reranker model."
@@ -181,8 +183,7 @@ def rerank(model_path:str, dataset:str, output_path):
             "python", "-m", "inpars.rerank",
             f"--model={model_path}",
             f"--dataset={dataset}",
-            f"--output_run={output_path}",
-            "--device=cuda",
+            f"--output_run={output_path}"
         ],  stdout=subprocess.PIPE,
             text=True
             )
