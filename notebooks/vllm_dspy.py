@@ -1,6 +1,8 @@
 import dspy
 import litellm
 from typing import List, Tuple
+import subprocess
+import multiprocessing
 
 # import os
 # os.environ["LITELLM_LOG"] = "DEBUG"
@@ -8,7 +10,9 @@ from typing import List, Tuple
 # litellm.set_verbose = True
 
 class DocToQuery(dspy.Signature):
-    document_good_query_bad_query_triples: List[Tuple[str,str,str]] = dspy.InputField()
+    document_good_query_bad_query_triples: List[Tuple[str,str,str]] = dspy.InputField(
+        format=lambda dgb : f"Document:{dgb[0]}\nGood query:{dgb[1]}\nBad query:{dgb[2]}"
+    )
     document: str = dspy.InputField()
     good_query: str = dspy.OutputField()
     bad_query: str = dspy.OutputField()
@@ -60,24 +64,19 @@ def ask_questions(lm_HF):
     print(response)
 
 def main():
-    model_name = "EleutherAI/gpt-j-6B"
-    lm = dspy.LM(
-        model=f"openai/{model_name}",
-        api_base="http://localhost:8000/v1",
-        api_key="fake_key",
-        model_type="completion",
-        cache=False,
-    )
-    dspy.configure(lm=lm)
-    print("-- Questions using new dspy.LM -- ")
-    ask_questions(lm)
+    vllm = multiprocessing.Process(target=subprocess.run, args=[["python", "-m", "vllm.entrypoints.openai.api_server", "--model", "EleutherAI/gpt-j-6B", "--port", "8000"]])
+    vllm.start()
 
-    lm_HF = dspy.HFClientVLLM(
+    model_name = "EleutherAI/gpt-j-6B"
+
+    lm_HF = dspy.LM(
         model=model_name, port=8000, url="http://localhost"
     )
     dspy.configure(lm=lm_HF)
     print("-- Questions using HFClientVLLM -- ")
     ask_questions(lm_HF)
+
+    vllm.terminate()
 
 
 if __name__ == "__main__":
