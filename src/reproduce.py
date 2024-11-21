@@ -118,7 +118,7 @@ def filter_queries(query_path:str, dataset:str, output_path:str, filtering_strat
             f"--filter_strategy={filtering_strategy}",
             f"--keep_top_k={10_000}",
             f"--output={output_path}",
-            f"--f16"
+            f"--fp16"
         ],  stdout=subprocess.PIPE,
             text=True
             )
@@ -188,7 +188,8 @@ def rerank(model_path:str, dataset:str, output_path):
             "python", "-m", "inpars.rerank",
             f"--model={model_path}",
             f"--dataset={dataset}",
-            f"--output_run={output_path}"
+            f"--output_run={output_path}",
+            f"--fp16"
         ],  stdout=subprocess.PIPE,
             text=True
             )
@@ -238,6 +239,9 @@ class InParsExperiment:
         self.dataset = dataset 
         self.generation_model = generation_model
         self.reranker_model = reranker_model 
+        self.use_inparsV2_pretrained = use_inparsV2_pretrained
+        self.use_downloaded = use_downloaded
+        self.pretrained_model = None
 
         # Create path where to save data such as queries generated.
         self.root = args.data_dir
@@ -265,7 +269,10 @@ class InParsExperiment:
             self.prompt_options = ['inpars']
 
         # Possible filtering options (inparsV1, inparsV2 respectively)
-        self.filter_options = ['scores', 'reranker']
+        if use_inparsV2_pretrained:
+            self.filter_options = ['reranker']
+        else:
+            self.filter_options = ['scores', 'reranker']
 
         # Set up directory structure for saving data
         if not os.path.exists(data_path):
@@ -326,8 +333,8 @@ class InParsExperiment:
                 'climate-fever' : 'climate_fever',
                 'scifact' : 'scifact',
             }[dataset]
-            
-            self.reranker_model = f'zeta-alpha-ai/monot5-3b-inpars-v2-{model_name}'
+
+            self.pretrained_model = f'zeta-alpha-ai/monot5-3b-inpars-v2-{model_name}'
         
 
     def run_generation(self):
@@ -396,7 +403,9 @@ class InParsExperiment:
                 if os.path.exists(output_path):
                     logging.info(f'({prompt_type},{filter_type}) has already been reranked. Continuing...')
                     continue
-
+                
+                if self.use_inparsV2_pretrained:
+                    reranker_path = self.pretrained_model
                 rerank(reranker_path, self.dataset, output_path)
 
 
