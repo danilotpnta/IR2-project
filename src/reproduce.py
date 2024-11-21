@@ -5,6 +5,7 @@ import time
 import json
 import sys
 import os
+import requests
 
 logging.basicConfig(
     level=logging.INFO,
@@ -70,6 +71,9 @@ def parse_args():
     parser.add_argument("--rerank", action="store_true")
     parser.add_argument("--evaluate", action="store_true")
 
+    parser.add_argument("--use_gbq", action="store_true")
+    parser.add_argument("--use_downloaded", action="store_true")
+    parser.add_argument("--use_inparsV2_pretrained", action="store_true")
 
     args = parser.parse_args()
 
@@ -113,7 +117,8 @@ def filter_queries(query_path:str, dataset:str, output_path:str, filtering_strat
             f"--dataset={dataset}",
             f"--filter_strategy={filtering_strategy}",
             f"--keep_top_k={10_000}",
-            f"--output={output_path}"
+            f"--output={output_path}",
+            f"--f16"
         ],  stdout=subprocess.PIPE,
             text=True
             )
@@ -225,7 +230,10 @@ class InParsExperiment:
             data_path:str,
             dataset:str,
             generation_model:str,
-            reranker_model:str
+            reranker_model:str,
+            use_gbq:bool = False,
+            use_inparsV2_pretrained:bool = False,
+            use_downloaded:bool = False
             ):
         self.dataset = dataset 
         self.generation_model = generation_model
@@ -238,10 +246,24 @@ class InParsExperiment:
             os.mkdir(os.path.join(self.root, 'data'))
 
         # Separate directory per dataset
-        data_path = os.path.join(self.root, 'data', dataset)
+        if use_downloaded and use_inparsV2_pretrained:
+            result_directory = 'downloaded_pretrained'
+        elif use_downloaded:
+            result_directory = 'downloaded'
+        elif use_inparsV2_pretrained:
+            result_directory = 'pretrained'
+        else:
+            result_directory = 'data'
+        
+        data_path = os.path.join(self.root, result_directory, dataset)
 
         # Possible prompt templates
-        self.prompt_options = ['inpars', 'promptagator'] #'inpars-gbq']
+        inpars_variant = 'inpars-gbq' if use_gbq else 'inpars' 
+        self.prompt_options = [inpars_variant, 'promptagator']
+
+        if use_downloaded or use_inparsV2_pretrained:
+            self.prompt_options = ['inpars']
+
         # Possible filtering options (inparsV1, inparsV2 respectively)
         self.filter_options = ['scores', 'reranker']
 
@@ -261,6 +283,51 @@ class InParsExperiment:
                 # For each filter option, create directory.
                 for filter_opt in self.filter_options:
                     os.mkdir(os.path.join(self.data_path, opt, filter_opt))
+        
+        if use_downloaded or use_inparsV2_pretrained:
+            synthetic_datasets = {
+                'trec-covid' : 'https://zav-public.s3.amazonaws.com/inpars/trec_covid_synthetic_queries_100k.jsonl',
+                'nfcorpus' : 'https://zav-public.s3.amazonaws.com/inpars/nfcorpus_synthetic_queries_100k.jsonl',
+                'hotpotqa' : 'https://zav-public.s3.amazonaws.com/inpars/hotpotqa_synthetic_queries_100k.jsonl',
+                'fiqa' : 'https://zav-public.s3.amazonaws.com/inpars/fiqa_synthetic_queries_100k.jsonl',
+                'arguana' : 'https://zav-public.s3.amazonaws.com/inpars/arguana_synthetic_queries_100k.jsonl',
+                'webis-touche2020' : 'https://zav-public.s3.amazonaws.com/inpars/touche_synthetic_queries_100k.jsonl',
+                'dbpedia-entity' : 'https://zav-public.s3.amazonaws.com/inpars/dbpedia_synthetic_queries_100k.jsonl',
+                'scidocs' : 'https://zav-public.s3.amazonaws.com/inpars/scidocs_synthetic_queries_100k.jsonl',
+                'fever' : 'https://zav-public.s3.amazonaws.com/inpars/fever_synthetic_queries_100k.jsonl',
+                'climate-fever' : 'https://zav-public.s3.amazonaws.com/inpars/climate_fever_synthetic_queries_100k.jsonl',
+                'scifact' : 'https://zav-public.s3.amazonaws.com/inpars/scifacts_synthetic_queries_100k.jsonl',
+            }
+            # /scratch-shared/InPars-data/data/trec-covid/gpt-j-6B/inpars-gbq
+            target_path = os.path.join(self.data_path, 'inpars', 'inpars-queries.jsonl')
+            if not os.path.exists(target_path):
+                downloaded_data = requests.get(synthetic_datasets[dataset], stream=True)
+                if downloaded_data.status_code == 200:
+                    with open(target_path, 'wb') as wf:
+                        for chunk in downloaded_data.iter_content(chunk_size=8192):
+                            wf.write(chunk)
+                        
+                    print(f'Successfully downloaded {synthetic_datasets[dataset]}!')
+
+                else:
+                    print(f'Failed downloading {synthetic_datasets[dataset]}...')
+
+        if use_inparsV2_pretrained:
+            model_name = {
+                'trec-covid' : 'trec_covid',
+                'nfcorpus' : 'nfcorpus',
+                'hotpotqa' : 'hotpotqa',
+                'fiqa' : 'fiqa',
+                'arguana' : 'arguana',
+                'webis-touche2020' : 'touche',
+                'dbpedia-entity' : 'dbpedia',
+                'scidocs' : 'scidocs',
+                'fever' : 'fever',
+                'climate-fever' : 'climate_fever',
+                'scifact' : 'scifact',
+            }[dataset]
+            
+            self.reranker_model = f'zeta-alpha-ai/monot5-3b-inpars-v2-{model_name}'
         
 
     def run_generation(self):
@@ -368,12 +435,14 @@ class InParsExperiment:
 if __name__ == '__main__':
     args = parse_args()
 
-
     inpars = InParsExperiment(
         data_path = args.data_dir,
         dataset = args.dataset,
         generation_model = args.generationLLM,
-        reranker_model = args.reranker
+        reranker_model = args.reranker,
+        use_gbq = args.use_gbq,
+        use_downloaded = args.use_downloaded,
+        use_inparsV2_pretrained = args.use_inparsV2_pretrained
     )
 
     if args.end2end:

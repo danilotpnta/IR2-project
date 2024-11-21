@@ -94,6 +94,8 @@ if __name__ == '__main__':
         writer = csv.writer(fout, delimiter='\t', lineterminator='\n', quoting=csv.QUOTE_MINIMAL)
         for qid in tqdm(results, desc='Sampling'):
             hits = results[qid]
+            if int(qid) >= len(queries):
+                continue
             query, log_probs, pos_doc_id = queries[int(qid)]
             n_examples += 1
             sampled_ranks = random.sample(range(len(hits)), min(len(hits), args.n_samples + 1))
