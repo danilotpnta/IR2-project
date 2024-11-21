@@ -70,7 +70,8 @@ if __name__ == '__main__':
             fp16=args.fp16,
             device=args.device,
         )
-        query_scores = model.rescore([(synt_item['query'], corpus[synt_item['doc_id']]) for synt_item in dataset])
+        q_key = "query" if dataset[0].get("query") is not None else "question"
+        query_scores = model.rescore([(synt_item[q_key], corpus[synt_item['doc_id']]) for synt_item in dataset])
         for idx, synt_item in enumerate(dataset):
             synt_item['score'] = query_scores[idx]
         
