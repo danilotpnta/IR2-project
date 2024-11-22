@@ -154,3 +154,5 @@ wrapt==1.16.0
 xxhash==3.5.0
 yarl==1.17.1
 zlib-state==0.1.9
+pyserini 
+requests
