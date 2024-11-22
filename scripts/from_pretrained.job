@@ -1,10 +1,11 @@
 #!/bin/bash
-#SBATCH --partition=gpu_a100
+#SBATCH --partition=gpu_h100 
 #SBATCH --gpus=1
-#SBATCH --job-name=generation
-#SBATCH --time=35:00:00
-#SBATCH --output=logs/scifact_llama_end2end.out
-#SBATCH --error=logs/scifact_llama_end2end.err
+#SBATCH --job-name=trec-covid-from_downloaded
+#SBATCH --time=03:00:00
+#SBATCH --output=logs/trec_covid_from_downloaded.out
+#SBATCH --error=logs/trec_covid_from_downloaded.err
+
 #SBATCH --ear=on
 #SBATCH --ear-policy=monitoring
 #SBATCH --ear-verbose=1
@@ -22,5 +23,5 @@ echo "Environment setup complete."
 echo "Python version: $(python --version)"
 echo "Java version: $(java --version)"
 
-srun python -m src.reproduce --dataset='scifact' --generationLLM='meta-llama/Llama-3.1-8B' --data_dir=$DATADIR \
-                --end2end
+srun python -m src.reproduce --dataset='trec-covid' --generationLLM='EleutherAI/gpt-j-6B' --data_dir=$DATADIR \
+        --rerank --evaluate --use_inparsV2_pretrained
