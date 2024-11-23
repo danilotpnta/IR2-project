@@ -44,6 +44,7 @@ if __name__ == "__main__":
     parser.add_argument("--output", type=str, required=True)
     parser.add_argument("--seed", type=int, default=1)
     parser.add_argument("--device", type=str, default=None)
+    parser.add_argument("--only_generate_prompt", action="store_true")
     # parser.add_argument('--verbose', action='store_true')
     args = parser.parse_args()
     set_seed(args.seed)
@@ -85,6 +86,7 @@ if __name__ == "__main__":
         tf=args.tf,
         device=args.device,
         torch_compile=args.torch_compile,
+        only_generate_prompt=args.only_generate_prompt,
         # verbose=args.verbose,
     )
 
@@ -93,6 +95,10 @@ if __name__ == "__main__":
         doc_ids=dataset["doc_id"],
         batch_size=args.batch_size,
     )
+    
+    if args.only_generate_prompt:
+        exit()
+
     dataset["query"] = [example["query"] for example in generated]
     dataset["log_probs"] = [example["log_probs"] for example in generated]
     dataset["prompt_text"] = [example["prompt_text"] for example in generated]

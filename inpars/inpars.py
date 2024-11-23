@@ -80,6 +80,7 @@ class InPars:
         tf=False,
         torch_compile=False,
         verbose=False,
+        only_generate_prompt=False,
     ):
         """
         Initializes the InPars object with the given parameters.
@@ -108,11 +109,27 @@ class InPars:
         self.n_fewshot_examples = n_fewshot_examples
         self.device = device
         self.verbose = verbose
+        self.tf = tf
+        self.only_generate_prompt = only_generate_prompt
+
         if device is None:
             self.device = "cuda" if torch.cuda.is_available() else "cpu"
 
         self.tokenizer = AutoTokenizer.from_pretrained(base_model, padding_side="left")
         self.tokenizer.pad_token = self.tokenizer.eos_token
+
+        self.fewshot_examples = load_examples(corpus, self.n_fewshot_examples)
+        self.prompter = Prompt.load(
+            name=prompt,
+            dataset=corpus,
+            examples=self.fewshot_examples,
+            n_generated_queries=n_generated_queries,
+            tokenizer=self.tokenizer,
+            max_query_length=self.max_query_length,
+            max_doc_length=self.max_doc_length,
+            max_prompt_length=self.max_prompt_length,
+            max_new_token=self.max_new_tokens,
+        )
 
         model_kwargs = {"revision": revision}
         if fp16:
@@ -125,7 +142,8 @@ class InPars:
         if fp16 and base_model == "EleutherAI/gpt-j-6B":
             model_kwargs["revision"] = "float16"
 
-        self.tf = tf
+        if self.only_generate_prompt:
+            return
 
         if self.tf:
             from transformers import TFAutoModelForCausalLM
@@ -143,19 +161,6 @@ class InPars:
                 self.model = torch.compile(self.model)
             self.model.to(self.device)
             self.model.eval()
-
-        self.fewshot_examples = load_examples(corpus, self.n_fewshot_examples)
-        self.prompter = Prompt.load(
-            name=prompt,
-            dataset=corpus,
-            examples=self.fewshot_examples,
-            n_generated_queries=n_generated_queries,
-            tokenizer=self.tokenizer,
-            max_query_length=self.max_query_length,
-            max_doc_length=self.max_doc_length,
-            max_prompt_length=self.max_prompt_length,
-            max_new_token=self.max_new_tokens,
-        )
 
     @torch.no_grad()
     def generate(
@@ -183,7 +188,7 @@ class InPars:
         """
         torch.cuda.empty_cache()
 
-        if self.tf:
+        if self.tf and not self.only_generate_prompt:
             import tensorflow as tf
 
         cache_dir = Path(cache_dir)
@@ -228,7 +233,6 @@ class InPars:
             desc="Building prompts",
             disable=len(documents) > 1000,
         )
-        # Do not reorder the 
         new_doc_ids = [prompt[1] for prompt in new_prompts if prompt is not None]
         new_prompts = [prompt[0] for prompt in new_prompts if prompt is not None]
         prompts.extend(new_prompts)
@@ -261,6 +265,9 @@ class InPars:
 
             except Exception as e:
                 print(f"Error updating cache: {e}")
+
+        if self.only_generate_prompt:
+            return prompts
 
         if self.tf:
             generate = tf.function(self.model.generate, jit_compile=True)
