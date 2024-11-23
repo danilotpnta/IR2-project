@@ -28,7 +28,8 @@ if __name__ == "__main__":
         default="ir_datasets",
         help="The dataset source: ir_datasets or pyserini",
     )
-    parser.add_argument("--n_fewshot_examples", type=int, default=3)
+    parser.add_argument("--n_fewshot_examples", type=int, default=2)
+    parser.add_argument("--n_generated_queries", type=int, default=1, help="Number of queries to generate per document. Current implementation provides examples which only shuffle the example query words.")
     parser.add_argument("--max_doc_length", default=256, type=int, required=False)
     parser.add_argument("--max_query_length", default=200, type=int, required=False)
     parser.add_argument("--max_prompt_length", default=2048, type=int, required=False)
@@ -56,6 +57,7 @@ if __name__ == "__main__":
         dataset = load_corpus(args.dataset, args.dataset_source)
         dataset = pd.DataFrame(dataset)
 
+    # May need to lift this restriction in the future
     if args.max_generations > len(dataset):
         args.max_generations = len(dataset)
 
@@ -73,6 +75,7 @@ if __name__ == "__main__":
         corpus=args.dataset,
         prompt=args.prompt,
         n_fewshot_examples=args.n_fewshot_examples,
+        n_generated_queries=args.n_generated_queries,
         max_doc_length=args.max_doc_length,
         max_query_length=args.max_query_length,
         max_prompt_length=args.max_prompt_length,
