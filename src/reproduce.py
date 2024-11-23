@@ -265,7 +265,8 @@ class InParsExperiment:
         inpars_variant = 'inpars-gbq' if use_gbq else 'inpars' 
         self.prompt_options = [inpars_variant, 'promptagator']
 
-        if use_downloaded or use_inparsV2_pretrained:
+        # Only inpars generations are available
+        if use_downloaded:
             self.prompt_options = ['inpars']
 
         # Possible filtering options (inparsV1, inparsV2 respectively)
@@ -292,7 +293,7 @@ class InParsExperiment:
                     os.mkdir(os.path.join(self.data_path, opt, filter_opt))
         
         if use_downloaded or use_inparsV2_pretrained:
-            synthetic_datasets = {
+            synthetic_datasets_v1 = {
                 'trec-covid' : 'https://zav-public.s3.amazonaws.com/inpars/trec_covid_synthetic_queries_100k.jsonl',
                 'nfcorpus' : 'https://zav-public.s3.amazonaws.com/inpars/nfcorpus_synthetic_queries_100k.jsonl',
                 'hotpotqa' : 'https://zav-public.s3.amazonaws.com/inpars/hotpotqa_synthetic_queries_100k.jsonl',
@@ -305,23 +306,38 @@ class InParsExperiment:
                 'climate-fever' : 'https://zav-public.s3.amazonaws.com/inpars/climate_fever_synthetic_queries_100k.jsonl',
                 'scifact' : 'https://zav-public.s3.amazonaws.com/inpars/scifacts_synthetic_queries_100k.jsonl',
             }
+            # synthetic_datasets_v2 = {
+            #     'trec-covid' : 'https://huggingface.co/datasets/inpars/generated-data/resolve/main/nfcorpus/queries.jsonl',
+            #     'nfcorpus' : 'https://huggingface.co/datasets/inpars/generated-data/resolve/main/nfcorpus/queries.jsonl',
+            #     'hotpotqa' : 'https://huggingface.co/datasets/inpars/generated-data/resolve/main/hotpotqa/queries.jsonl',
+            #     'fiqa' : 'https://huggingface.co/datasets/inpars/generated-data/resolve/main/fiqa/queries.jsonl',
+            #     'arguana' : 'https://huggingface.co/datasets/inpars/generated-data/resolve/main/arguana/queries.jsonl',
+            #     'webis-touche2020' : 'https://huggingface.co/datasets/inpars/generated-data/resolve/main/webis-touche2020/queries.jsonl',
+            #     'dbpedia-entity' : 'https://huggingface.co/datasets/inpars/generated-data/resolve/main/dbpedia-entity/queries.jsonl',
+            #     'scidocs' : 'https://huggingface.co/datasets/inpars/generated-data/resolve/main/scidocs/queries.jsonl',
+            #     'fever' : 'https://huggingface.co/datasets/inpars/generated-data/resolve/main/fever/queries.jsonl',
+            #     'climate-fever' : 'https://huggingface.co/datasets/inpars/generated-data/resolve/main/climate-fever/queries.jsonl',
+            #     'scifact' : 'https://huggingface.co/datasets/inpars/generated-data/resolve/main/scifact/queries.jsonl',
+            # }
+
             # /scratch-shared/InPars-data/data/trec-covid/gpt-j-6B/inpars-gbq
             target_path = os.path.join(self.data_path, 'inpars', 'inpars-queries.jsonl')
             if not os.path.exists(target_path):
-                downloaded_data = requests.get(synthetic_datasets[dataset], stream=True)
+                downloaded_data = requests.get(synthetic_datasets_v1[dataset], stream=True)
                 if downloaded_data.status_code == 200:
                     with open(target_path, 'wb') as wf:
                         for chunk in downloaded_data.iter_content(chunk_size=8192):
                             wf.write(chunk)
                         
-                    print(f'Successfully downloaded {synthetic_datasets[dataset]}!')
+                    print(f'Successfully downloaded {synthetic_datasets_v1[dataset]}!')
 
                 else:
-                    print(f'Failed downloading {synthetic_datasets[dataset]}...')
+                    print(f'Failed downloading {synthetic_datasets_v1[dataset]}...')
 
+            
         if use_inparsV2_pretrained:
-            model_name = {
-                'trec-covid' : 'trec_covid',
+            model_name_inpars = {
+                'trec-covid' : 'trec_covid' ,
                 'nfcorpus' : 'nfcorpus',
                 'hotpotqa' : 'hotpotqa',
                 'fiqa' : 'fiqa',
@@ -334,7 +350,21 @@ class InParsExperiment:
                 'scifact' : 'scifact',
             }[dataset]
 
-            self.pretrained_model = f'zeta-alpha-ai/monot5-3b-inpars-v2-{model_name}'
+            model_name_promptagator = {
+                'trec-covid' : 'trec-covid' ,
+                'nfcorpus' : 'nfcorpus',
+                'hotpotqa' : 'hotpotqa',
+                'fiqa' : 'fiqa',
+                'arguana' : 'arguana',
+                'webis-touche2020' : 'webis-touche2020',
+                'dbpedia-entity' : 'dbpedia',
+                'scidocs' : 'scidocs',
+                'fever' : 'fever',
+                'scifact' : 'scifact',
+            }[dataset]
+
+            self.pretrained_model_inpars = f'zeta-alpha-ai/monot5-3b-inpars-v2-{model_name_inpars}'
+            self.pretrained_model_prompt = f'inpars/monot5-3b-inpars-v2-{model_name_promptagator}-promptagator'
         
 
     def run_generation(self):
@@ -405,7 +435,7 @@ class InParsExperiment:
                     continue
                 
                 if self.use_inparsV2_pretrained:
-                    reranker_path = self.pretrained_model
+                    reranker_path = self.pretrained_model_inpars if 'inpars' in prompt_type else self.pretrained_model_prompt
                 rerank(reranker_path, self.dataset, output_path)
 
 
