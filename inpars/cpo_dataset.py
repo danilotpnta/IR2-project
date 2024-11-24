@@ -75,8 +75,8 @@ def load_doc_texts(dataset, doc_ids):
                     total=len(doc_ids),
                     desc="Loading documents"):
 
-        # TODO: body might be too long.
-        ret[doc.doc_id] = ftfy.fix_text(f"{doc.title} {doc.body}")
+        # TODO: 'body' is too long. We can only use 'title'
+        ret[doc.doc_id] = ftfy.fix_text(f"{doc.title}")
     return ret
 
 def load_query_texts(dataset, query_ids):
