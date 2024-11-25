@@ -191,7 +191,7 @@ class InPars:
         if self.tf and not self.only_generate_prompt:
             import tensorflow as tf
 
-        cache_dir = Path(cache_dir)
+        cache_dir = Path(cache_dir) / self.corpus
         cache_dir.mkdir(exist_ok=True)
         cache_file = cache_dir / f"{cache_name}.pkl"
 

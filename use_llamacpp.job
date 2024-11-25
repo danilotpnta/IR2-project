@@ -31,6 +31,6 @@ module load Clang/16.0.6-GCCcore-12.3.0
 
 source $PROJECT_ROOT/.venv/bin/activate
 # Feel free to comment out when you have built the wheels
-CMAKE_ARGS="-DGGML_CUDA=on" FORCE_CMAKE=1 $HOME/.local/bin/uv pip install llama-cpp-python --verbose
+CUDACXX=$(which nvcc) CMAKE_ARGS="-DGGMLCUBLAS=on -DCMAKE_CUDA_ARCHITECTURES=all-major" FORCE_CMAKE=1 pip install llama-cpp-python --no-cache-dir --upgrade --verbose
 
 python load_llamacpp.py
