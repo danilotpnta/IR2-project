@@ -153,9 +153,10 @@ cache/
 wandb/
 reranker/
 
-# trec-covid dataset ouputs
-tmp-run-trec-covid.txt
+# dataset ouputs
 cache_plus/
+*.txt
+!requirements.txt
 
 # this should avoid logging generate, filter, and rerank results
 *.jsonl
@@ -173,3 +174,4 @@ bin/
 
 # logs from the jobs
 logs/
+
