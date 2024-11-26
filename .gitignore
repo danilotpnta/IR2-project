@@ -160,6 +160,7 @@ cache_plus/
 
 # this should avoid logging generate, filter, and rerank results
 *.jsonl
+*.json
 # trec-covid-queries-filtered.jsonl
 # trec-covid-queries_HF.jsonl
 # trec-covid-queries.jsonl
