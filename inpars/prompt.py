@@ -2,6 +2,8 @@ import os
 import ftfy
 import yaml
 import random
+import pandas as pd
+from typing import List, Optional
 
 with open(f"{os.path.dirname(__file__)}/prompts/templates.yaml") as f:
     templates = yaml.safe_load(f)
@@ -109,3 +111,40 @@ class DynamicPrompt(Prompt):
                 )["input_ids"]
             )
         return query
+
+class DeterministicPrompt(DynamicPrompt):
+    def __init__(self,
+                 template=None,
+                 examples: pd.DataFrame=None,
+                 tokenizer=None,
+                 max_doc_length=None,
+                 max_query_length=None,
+                 max_prompt_length=None,
+                 max_new_token=16):
+        super().__init__(template, examples, tokenizer,
+                         max_doc_length, max_query_length, max_prompt_length, max_new_token)
+        if not isinstance(examples, pd.DataFrame):
+            raise ValueError("Examples must be a DataFrame.")
+
+    def build(self,
+              document,
+              query,
+              example_queries: List[str],
+              example_docs: List[str]):
+        prompt = ""
+        for i in range(len(example_queries)):
+            ex_query = self._truncate_max_query_length(example_queries[i])
+            ex_doc = self._truncate_max_doc_length(example_docs[i])
+            prompt += self.template.format(document=ex_doc, query=ex_query)
+
+        document = ftfy.fix_text(document)
+        if self.max_doc_length:
+            document = self.tokenizer.decode(
+                self.tokenizer(
+                    document, truncation=True, max_length=self.max_doc_length
+                )["input_ids"]
+            )
+
+        prompt += self.template.format(document=document, query=query)
+
+        return prompt
