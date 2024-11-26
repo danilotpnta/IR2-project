@@ -13,7 +13,7 @@ from query_eval import QueryEval
 
 logger = logging.getLogger(__name__)
 
-def load_llmt_dataset(source_path: Path):
+def load_cpo_dataset(source_path: Path):
     """
         Implementation adapted from 
         https://github.com/fe1ixxu/ALMA/blob/master/utils/utils.py :: `preprocess_cpo_data`
@@ -169,7 +169,7 @@ def score_queries(doc_query_pairs: Dict[str, str],
             doc_id_score_map[doc_id] = score
     return doc_id_score_map
 
-def build_llmt_dataset(
+def build_cpo_dataset(
     model_name: str,
     teacher_model: str,
     dataset_name: str = 'msmarco-document/train',
@@ -358,7 +358,7 @@ def build_llmt_dataset(
             query_eval.save_to_cache(output_dir)
             logger.info(f"Saved query evaluator to {output_dir}")
 
-    # generate reference scores
+    # obtain reference scores
     if not has_ref_scores:
         ref_doc_query_pairs = {doc_id: data["ref_query"] for doc_id,
                                data in output["data"].items()}
@@ -373,7 +373,7 @@ def build_llmt_dataset(
         logger.info(
             f"Generated reference scores and saved dataset to {output_path}")
 
-    # generate teacher scores
+    # obtain teacher scores
     if not has_teacher_scores:
         teacher_doc_query_pairs = {doc_id: data["teacher_query"] for doc_id,
                                    data in output["data"].items()}
@@ -388,7 +388,7 @@ def build_llmt_dataset(
         logger.info(
             f"Generated teacher scores and saved dataset to {output_path}")
 
-    # generate student scores
+    # obtain student scores
     if not has_student_scores:
         student_doc_query_pairs = {doc_id: data["student_query"] for doc_id,
                                    data in output["data"].items()}
