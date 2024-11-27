@@ -120,53 +120,6 @@ class DynamicPrompt(Prompt):
             )
         return query
 
-
-class DeterministicPrompt(DynamicPrompt):
-    def __init__(
-        self,
-        template=None,
-        examples: pd.DataFrame = None,
-        tokenizer=None,
-        max_doc_length=None,
-        max_query_length=None,
-        max_prompt_length=None,
-        max_new_token=16,
-    ):
-        super().__init__(
-            template,
-            examples,
-            tokenizer,
-            max_doc_length,
-            max_query_length,
-            max_prompt_length,
-            max_new_token,
-        )
-        if not isinstance(examples, pd.DataFrame):
-            raise ValueError("Examples must be a DataFrame.")
-
-    def build(
-        self, document, query, example_queries: List[str], example_docs: List[str]
-    ):
-        prompt = ""
-        for i in range(len(example_queries)):
-            ex_query = self._truncate_max_query_length(example_queries[i])
-            ex_doc = self._truncate_max_doc_length(example_docs[i])
-            prompt += self.template.format(document=ex_doc, query=ex_query)
-
-            prompt += self.template.format(document=document, query=query)
-
-        return prompt
-
-    def _truncate_max_query_length(self, query):
-        if self.max_query_length:
-            query = self.tokenizer.decode(
-                self.tokenizer(
-                    query, truncation=True, max_length=self.max_query_length
-                )["input_ids"]
-            )
-        return query
-
-
 class DynamicPromptV2(Prompt):
     def build(self, document, n_examples=3, **dataset_stats) -> str:
         random_examples = random.sample(self.examples, n_examples)
