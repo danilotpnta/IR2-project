@@ -14,7 +14,7 @@ import pandas as pd
 from transformers import PreTrainedModel, PreTrainedTokenizerBase
 
 from .query_eval import QueryEval
-from .prompt import DeterministicPrompt
+from .prompt import DeterministicPrompt, Prompt
 
 
 logger = logging.getLogger(__name__)
@@ -56,6 +56,7 @@ def continue_from_checkpoint(
             and "ref_query_id" in data
         )
         has_examples = "example_ids" in data
+        has_prompts = "prompts" in data
         has_teacher_queries = "teacher_query" in data
         has_student_queries = "student_query" in data
         has_ref_scores = "ref_score" in data
@@ -65,6 +66,7 @@ def continue_from_checkpoint(
         output,
         has_docs_queries,
         has_examples,
+        has_prompts,
         has_teacher_queries,
         has_student_queries,
         has_ref_scores,
@@ -183,6 +185,7 @@ def build_cpo_dataset(
     max_prompt_length: int = 1024,
     max_new_token: int = 16,
     query_eval: Optional[QueryEval] = None,
+    use_vllm: bool = False,
 ):
     """
     TODO: update the docstring
@@ -307,6 +310,7 @@ def build_cpo_dataset(
         output,
         has_docs_queries,  # step 1, 2, 3
         has_examples,  # step 4, 5
+        has_prompts,  # step 5.5
         has_teacher_queries,  # step 6
         has_student_queries,  # step 7
         has_ref_scores,  # step 8
@@ -350,33 +354,74 @@ def build_cpo_dataset(
             json.dump(output, f)
         logger.info(f"Loaded example texts and saved dataset to {output_path}")
 
-    # prompt builder args
-    with open(f"{os.path.dirname(__file__)}/prompts/templates.yaml") as f:
-        templates = yaml.safe_load(f)
-    prompt_builder_args = namedtuple(
-        template=templates["dynamic"][prompt_template_name],
-        examples=None,  # no need to this, since we use DeterministicPrompt
-        tokenizer=None,  # needs to be replaced for each model
-        max_doc_length=max_doc_length,
-        max_query_length=max_query_length,
-        max_prompt_length=max_prompt_length,
-        max_new_token=max_new_token,
-    )
+    # Step 5.5: Generate the prompts
+    if not has_prompts:
+        # prompt builder args
+        with open(f"{os.path.dirname(__file__)}/prompts/templates.yaml") as f:
+            templates = yaml.safe_load(f)
+
+        prompt_builder_args = namedtuple(
+            template=templates["dynamic"][prompt_template_name],
+            examples=None,  # no need to this, since we use DeterministicPrompt
+            tokenizer=None,  # needs to be replaced for each model
+            max_doc_length=max_doc_length,
+            max_query_length=max_query_length,
+            max_prompt_length=max_prompt_length,
+            max_new_token=max_new_token,
+        )
+
+        # prompt builder args (with DynamicPromptV2)
+        prompt = Prompt.load(
+            name=prompt_template_name,
+            dataset=dataset_name,
+            examples=dataset[["query_id", "doc_id", "query_text", "doc_text"]],
+            tokenizer=None,  # needs to be replaced for each model
+            max_doc_length=max_doc_length,
+            max_query_length=max_query_length,
+            max_prompt_length=max_prompt_length,
+            max_new_token=max_new_token,
+        )
+
+        # load tokenizer
+        tokenizer = PreTrainedTokenizerBase.from_pretrained(model_name)
+        # build prompter
+        prompt_builder_args.tokenizer = tokenizer
+
+        # DynamicPromptV2
+        output["prompts"] = [
+            prompt.build(
+                document=data["target_doc_text"],
+                n_examples=num_examples,
+            )
+            for doc_id, data in output["data"].items()
+        ]
+
+        # checkpoint
+        with open(output_path, "w") as f:
+            json.dump(output, f)
+        logger.info(f"Generated prompts and saved dataset to {output_path}")
 
     # generate teacher queries
-    if not has_teacher_queries and False:
-        # load model and tokenizer
-        # TODO: we might want to just pass the model and tokenizer
-        teacher_tokenizer = PreTrainedTokenizerBase.from_pretrained(teacher_model)
-        teacher_model = PreTrainedModel.from_pretrained(teacher_model)
-        # build prompter
-        prompt_builder_args.tokenizer = teacher_tokenizer
-        prompt_builder = DeterministicPrompt(**prompt_builder_args._asdict())
+    if not has_teacher_queries:
+        if use_vllm:
+            from .vllm_inference import generate_queries
 
-        # TODO: Not complete yet
-        teacher_queries = generate_queries(
-            teacher_model, teacher_tokenizer, output, prompt_builder
-        )
+            teacher_queries = generate_queries(
+                output["prompts"], output["doc_ids"], teacher_model, dataset=dataset
+            )
+        else:
+            # load model and tokenizer
+            # TODO: we might want to just pass the model and tokenizer
+            teacher_tokenizer = PreTrainedTokenizerBase.from_pretrained(teacher_model)
+            teacher_model = PreTrainedModel.from_pretrained(teacher_model)
+            # build prompter
+            prompt_builder_args.tokenizer = teacher_tokenizer
+            prompt_builder = DeterministicPrompt(**prompt_builder_args._asdict())
+
+            # TODO: Not complete yet
+            teacher_queries = generate_queries(
+                teacher_model, teacher_tokenizer, output, prompt_builder
+            )
         for doc_id, query in teacher_queries.items():
             output["data"][doc_id]["teacher_query"] = query
 
@@ -386,19 +431,26 @@ def build_cpo_dataset(
         logger.info(f"Generated teacher queries and saved dataset to {output_path}")
 
     # generate student queries
-    if not has_student_queries and False:
-        # load model and tokenizer
-        # TODO: we might want to just pass the model and tokenizer
-        student_tokenizer = PreTrainedTokenizerBase.from_pretrained(model_name)
-        student_model = PreTrainedModel.from_pretrained(model_name)
-        # build prompter
-        prompt_builder_args.tokenizer = student_tokenizer
-        prompt_builder = DeterministicPrompt(**prompt_builder_args._asdict())
+    if not has_student_queries:
+        if use_vllm:
+            from .vllm_inference import generate_queries
 
-        # TODO: Not complete yet
-        student_queries = generate_queries(
-            student_model, student_tokenizer, output, prompt_builder
-        )
+            student_queries = generate_queries(
+                output["prompts"], output["doc_ids"], model_name, dataset=dataset
+            )
+        else:
+            # load model and tokenizer
+            # TODO: we might want to just pass the model and tokenizer
+            student_tokenizer = PreTrainedTokenizerBase.from_pretrained(model_name)
+            student_model = PreTrainedModel.from_pretrained(model_name)
+            # build prompter
+            prompt_builder_args.tokenizer = student_tokenizer
+            prompt_builder = DeterministicPrompt(**prompt_builder_args._asdict())
+
+            # TODO: Not complete yet
+            student_queries = generate_queries(
+                student_model, student_tokenizer, output, prompt_builder
+            )
 
         for doc_id, query in student_queries.items():
             output["data"][doc_id]["student_query"] = query
@@ -476,10 +528,21 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--model_name", type=str, required=True, help="Student model")
-    parser.add_argument("--teacher_model", type=str, required=True, help="Teacher model")
-    parser.add_argument("--output_dir", type=str, help="Output directory", default="cache")
-    parser.add_argument("--num_samples", type=int, help="Number of samples to build", default=20_000)
-    parser.add_argument("--prompt_template_name", type=str, help="Prompt template name", default="inparsplus")
+    parser.add_argument(
+        "--teacher_model", type=str, required=True, help="Teacher model"
+    )
+    parser.add_argument(
+        "--output_dir", type=str, help="Output directory", default="cache"
+    )
+    parser.add_argument(
+        "--num_samples", type=int, help="Number of samples to build", default=20_000
+    )
+    parser.add_argument(
+        "--prompt_template_name",
+        type=str,
+        help="Prompt template name",
+        default="inparsplus",
+    )
     parser.add_argument("--dataset_name", type=str, default="msmarco-document/train")
     parser.add_argument("--num_examples", type=int, default=3)
     parser.add_argument("--seed", type=int, default=42)
@@ -487,6 +550,7 @@ if __name__ == "__main__":
     parser.add_argument("--max_query_length", type=int, default=64)
     parser.add_argument("--max_prompt_length", type=int, default=1024)
     parser.add_argument("--max_new_token", type=int, default=16)
+    parser.add_argument("--use_vllm", action="store_true")
     args = parser.parse_args()
 
     build_cpo_dataset(
@@ -502,4 +566,5 @@ if __name__ == "__main__":
         max_query_length=args.max_query_length,
         max_prompt_length=args.max_prompt_length,
         max_new_token=args.max_new_token,
+        use_vllm=args.use_vllm,
     )

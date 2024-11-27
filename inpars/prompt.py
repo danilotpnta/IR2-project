@@ -32,11 +32,11 @@ class Prompt:
         self.max_new_token = max_new_token
 
     @classmethod
-    def load(cls, name, dataset=None, *args, **kwargs):
+    def load(cls, name: str, dataset: str = None, *args, **kwargs):
         if "inparsplus" in name:
             if dataset is None:
                 raise ValueError("Dataset must be provided to load inparsplus prompt")
-            name = f"inparsplus-{dataset.lower()}"
+            name = f"inparsplus-{dataset.split('/')[0].lower()}"
         if name in templates:
             template = templates[name]
             prompt_class = {
