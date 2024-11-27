@@ -27,12 +27,12 @@ class Prompt:
         self.max_doc_length = max_doc_length
         self.max_query_length = max_query_length
         self.max_prompt_length = max_prompt_length
-        self.max_prompt_length_words = max_prompt_length * 2/3 # magic number
+        self.max_prompt_length_words = max_prompt_length * 2 / 3  # magic number
         self.n_generated_queries = n_generated_queries
         self.max_new_token = max_new_token
 
     @classmethod
-    def load(cls, name, dataset = None, *args, **kwargs):
+    def load(cls, name, dataset=None, *args, **kwargs):
         if "inparsplus" in name:
             if dataset is None:
                 raise ValueError("Dataset must be provided to load inparsplus prompt")
@@ -120,35 +120,43 @@ class DynamicPrompt(Prompt):
             )
         return query
 
+
 class DeterministicPrompt(DynamicPrompt):
-    def __init__(self,
-                 template=None,
-                 examples: pd.DataFrame=None,
-                 tokenizer=None,
-                 max_doc_length=None,
-                 max_query_length=None,
-                 max_prompt_length=None,
-                 max_new_token=16):
-        super().__init__(template, examples, tokenizer,
-                         max_doc_length, max_query_length, max_prompt_length, max_new_token)
+    def __init__(
+        self,
+        template=None,
+        examples: pd.DataFrame = None,
+        tokenizer=None,
+        max_doc_length=None,
+        max_query_length=None,
+        max_prompt_length=None,
+        max_new_token=16,
+    ):
+        super().__init__(
+            template,
+            examples,
+            tokenizer,
+            max_doc_length,
+            max_query_length,
+            max_prompt_length,
+            max_new_token,
+        )
         if not isinstance(examples, pd.DataFrame):
             raise ValueError("Examples must be a DataFrame.")
 
-    def build(self,
-              document,
-              query,
-              example_queries: List[str],
-              example_docs: List[str]):
+    def build(
+        self, document, query, example_queries: List[str], example_docs: List[str]
+    ):
         prompt = ""
         for i in range(len(example_queries)):
             ex_query = self._truncate_max_query_length(example_queries[i])
             ex_doc = self._truncate_max_doc_length(example_docs[i])
             prompt += self.template.format(document=ex_doc, query=ex_query)
-            
+
             prompt += self.template.format(document=document, query=query)
 
         return prompt
-    
+
     def _truncate_max_query_length(self, query):
         if self.max_query_length:
             query = self.tokenizer.decode(
@@ -157,6 +165,7 @@ class DeterministicPrompt(DynamicPrompt):
                 )["input_ids"]
             )
         return query
+
 
 class DynamicPromptV2(Prompt):
     def build(self, document, n_examples=3, **dataset_stats) -> str:
@@ -168,7 +177,7 @@ class DynamicPromptV2(Prompt):
         #     "{} Tokens": int,
         # }
         # where {} is all of "Documents", "Queries" and "Total"
-        qlen = dataset_stats.get("Queries Words", 30) # more magic numbers
+        qlen = dataset_stats.get("Queries Words", 30)  # more magic numbers
         dlen = dataset_stats.get("Documents Words", 300)
 
         template = self.template
@@ -180,7 +189,10 @@ class DynamicPromptV2(Prompt):
             # Assuming the last line is the query line and it contains a colon.
             context, _, query_str = template.rpartition("\n")
             _query_str = query_str.replace(":", " {i}:")
-            _query_str = "\n".join(_query_str.replace("{query}","{query_{i}}").replace("{i}", str(i)) for i in range(1, self.n_generated_queries+1))
+            _query_str = "\n".join(
+                _query_str.replace("{query}", "{query_{i}}").replace("{i}", str(i))
+                for i in range(1, self.n_generated_queries + 1)
+            )
             template = f"{context}\n{_query_str}"
 
         prompt = ""
@@ -188,13 +200,25 @@ class DynamicPromptV2(Prompt):
             _, _, query, doc = random_examples[i]
             query = self._truncate_max_query_length(query)
             doc = self._truncate_max_doc_length(doc)
-            
-            if len(prompt.split()) + len(doc.split()) + self.n_generated_queries * len(query.split()) + dlen + self.n_generated_queries * qlen > self.max_prompt_length:
+
+            if (
+                len(prompt.split())
+                + len(doc.split())
+                + self.n_generated_queries * len(query.split())
+                + dlen
+                + self.n_generated_queries * qlen
+                > self.max_prompt_length
+            ):
                 break
-            
+
             if self.n_generated_queries > 1:
                 query_text_split = query.split()
-                queries = {"query_1": query} | {f"query_{i}": " ".join(random.sample(query_text_split, len(query_text_split))) for i in range(2, self.n_generated_queries+1)}
+                queries = {"query_1": query} | {
+                    f"query_{i}": " ".join(
+                        random.sample(query_text_split, len(query_text_split))
+                    )
+                    for i in range(2, self.n_generated_queries + 1)
+                }
                 prompt += template.format(document=doc, **queries) + "\n\n"
             else:
                 prompt += template.format(document=doc, query=query) + "\n\n"
