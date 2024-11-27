@@ -83,6 +83,7 @@ def generate_queries(model_name: str, dataset: str):
         cache=False,
     )
     dspy.configure(lm=lm)
+
     class DocumentToQuery(dspy.Signature):
         """Extract a single relevant query that encompasses the document."""
 
@@ -105,17 +106,18 @@ def generate_queries(model_name: str, dataset: str):
     # doc_ids.to_csv(f"data/{dataset}/doc_ids.csv", index=False)
 
     # sample the first 10 prompts and doc_ids
-    prompts = prompts.head(10).tolist()
-    doc_ids = doc_ids.head(10).tolist()
+    prompts = prompts.head(1_000).tolist()
+    doc_ids = doc_ids.head(1_000).tolist()
 
     # print(prompts)
 
-    generations = []
-    outputs = qa_cot(document=prompts[0], use_tqdm=True)
-    print(outputs.query)
-    generations += [
-        (d_id, output) for d_id, output in zip(doc_ids, outputs)
-    ]
+    outputs = [qa_cot(document=prompt) for prompt in prompts]
+    generations = [(d_id, output.query) for d_id, output in zip(doc_ids, outputs)]
+
+    # generations = []
+    # outputs = qa_cot(document=prompts[0], use_tqdm=True)
+    # print(outputs.query)
+    # generations += [(d_id, output) for d_id, output in zip(doc_ids, outputs)]
 
     save_path = f"data/{dataset}/queries_{model_name.split('/')[-1]}.jsonl"
 
