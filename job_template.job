@@ -1,0 +1,35 @@
+#!/bin/bash
+
+#SBATCH --partition=gpu_h100
+#SBATCH --gpus=1
+
+#SBATCH --job-name=quantize
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=16
+#SBATCH --time=23:59:00
+#SBATCH --mem=180GB
+#SBATCH --output=/scratch-shared/scur2577/runs/%A.out
+#/SBATCH --output=/scratch-shared/scur2577/runs/%A.out
+
+#SBATCH --ear=on
+#SBATCH --ear-policy=monitoring
+#SBATCH --ear-verbose=1
+
+date
+export HF_HOME="/scratch-shared/$USER"
+export GPU_COUNT=$(nvidia-smi --list-gpus | wc -l)
+
+# make sure the correct modules are used and that the virtual environment is active
+PROJECT_ROOT=/home/$USER/IR2-project
+source $PROJECT_ROOT/scripts/snellius_setup.sh
+setup $PROJECT_ROOT
+cd $PROJECT_ROOT
+
+# rest of the script
+# python -m inpars.generate \
+#         --prompt="inparsplus" \
+#         --dataset="scifact" \
+#         --dataset_source="ir_datasets" \
+#         --base_model="neuralmagic/Meta-Llama-3.1-8B-Instruct-quantized.w8a16" \
+#         --output="trec-covid-queries.jsonl" --only_generate_prompt
+python vllm_inference.py

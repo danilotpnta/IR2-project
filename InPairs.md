@@ -43,8 +43,8 @@ To generate data for one of the [BEIR datasets](https://github.com/beir-cellar/b
 
 ```bash
 python -m inpars.generate \
-        --prompt="inpars" \
-        --dataset="trec-covid" \
+        --prompt="inparsplus" \
+        --dataset="scifact" \
         --dataset_source="ir_datasets" \
         --base_model="EleutherAI/gpt-j-6B" \
         --output="trec-covid-queries.jsonl" 
