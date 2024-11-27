@@ -1,4 +1,4 @@
-from typing import Any, Callable, Dict, Optional, Tuple
+from typing import Any, Callable, Dict, Optional, Tuple, List
 import os
 import json
 import yaml
@@ -14,7 +14,7 @@ import pandas as pd
 from transformers import PreTrainedModel, PreTrainedTokenizerBase
 
 from .query_eval import QueryEval
-from .prompt import DeterministicPrompt, Prompt
+from .prompt import Prompt
 
 
 logger = logging.getLogger(__name__)
@@ -34,7 +34,7 @@ def continue_from_checkpoint(
     output = {"dataset_name": dataset_name, "doc_ids": [], "data": []}
     # flags to continue from where we left off
     has_docs_queries = False
-    has_examples = False
+    has_prompts = False
     has_teacher_queries = False
     has_student_queries = False
     has_ref_scores = False
@@ -55,8 +55,7 @@ def continue_from_checkpoint(
             and "target_doc_id" in data
             and "ref_query_id" in data
         )
-        has_examples = "example_ids" in data
-        has_prompts = "prompts" in data
+        has_prompts = "prompt" in data
         has_teacher_queries = "teacher_query" in data
         has_student_queries = "student_query" in data
         has_ref_scores = "ref_score" in data
@@ -65,7 +64,6 @@ def continue_from_checkpoint(
     return (
         output,
         has_docs_queries,
-        has_examples,
         has_prompts,
         has_teacher_queries,
         has_student_queries,
@@ -75,7 +73,9 @@ def continue_from_checkpoint(
     )
 
 
-def load_examples(dataset, doc_ids, num_examples, seed):
+def create_prompts(
+    dataset: pd.DataFrame, prompt_builder: Prompt, doc_ids: List[str], num_examples: int
+):
     """
     Load `num_examples` example document-query pairs for each document.
     Return a dictionary with the following format:
@@ -88,15 +88,20 @@ def load_examples(dataset, doc_ids, num_examples, seed):
         }
     }
     """
-    # TODO: should we sample from the whole dataset or just the subset we computed earlier?
-    return
+    prompts = {}
+    for doc_id in tqdm(doc_ids, desc="Creating prompts"):
+        prompt = prompt_builder.build(
+            dataset[dataset["doc_id"] == doc_id]["doc_text"].values[0],
+            n_examples=num_examples,
+        )
+        prompts[doc_id] = prompt
+    return prompts
 
 
 def generate_queries(
     model: PreTrainedModel,
     tokenizer: PreTrainedTokenizerBase,
-    dataset: Dict[str, Any],
-    prompt_builder: DeterministicPrompt,
+    dataset: Dict[str, Any],  # the dataset we built, not the dataframe
     batch_size: int = 32,
 ):
     """
@@ -122,16 +127,6 @@ def generate_queries(
 
     # construct collator
     # iterate over the dataset
-
-    # NOTE: prompt_builder usage
-    data = dataset["data"].values().next()  # just an example
-    prompt = prompt_builder.build(
-        document=data["target_doc_text"],
-        n_examples=len(data["example_texts"]),
-        example_queries=data["example_queries"],
-        example_docs=data["example_texts"],
-    )
-    # end of example
 
     # generate queries
     # save queries
@@ -309,8 +304,7 @@ def build_cpo_dataset(
     (
         output,
         has_docs_queries,  # step 1, 2, 3
-        has_examples,  # step 4, 5
-        has_prompts,  # step 5.5
+        has_prompts,  # step 4, 5
         has_teacher_queries,  # step 6
         has_student_queries,  # step 7
         has_ref_scores,  # step 8
@@ -335,41 +329,8 @@ def build_cpo_dataset(
             json.dump(output, f)
         logger.info(f"Loaded document texts and saved dataset to {output_path}")
 
-    # load example document-query pairs
-    if not has_examples:
-        # sample num_examples example document-query pairs for each document
-        for doc_id in output["doc_ids"]:
-            # make sure the examples don't include the target document
-            while True:
-                examples = dataset.sample(num_examples, random_state=seed)
-                if doc_id not in examples["doc_id"].tolist():
-                    break
-            for i, row in examples.iterrows():
-                output["data"][doc_id]["example_ids"] = row["doc_id"].tolist()
-                output["data"][doc_id]["example_texts"] = row["doc_text"].tolist()
-                output["data"][doc_id]["example_query_ids"] = row["query_id"].tolist()
-                output["data"][doc_id]["example_queries"] = row["query_text"].tolist()
-        # checkpoint
-        with open(output_path, "w") as f:
-            json.dump(output, f)
-        logger.info(f"Loaded example texts and saved dataset to {output_path}")
-
-    # Step 5.5: Generate the prompts
+    # Step 4,5: Generate the prompts
     if not has_prompts:
-        # prompt builder args
-        with open(f"{os.path.dirname(__file__)}/prompts/templates.yaml") as f:
-            templates = yaml.safe_load(f)
-
-        prompt_builder_args = namedtuple(
-            template=templates["dynamic"][prompt_template_name],
-            examples=None,  # no need to this, since we use DeterministicPrompt
-            tokenizer=None,  # needs to be replaced for each model
-            max_doc_length=max_doc_length,
-            max_query_length=max_query_length,
-            max_prompt_length=max_prompt_length,
-            max_new_token=max_new_token,
-        )
-
         # prompt builder args (with DynamicPromptV2)
         prompt = Prompt.load(
             name=prompt_template_name,
@@ -385,16 +346,13 @@ def build_cpo_dataset(
         # load tokenizer
         tokenizer = PreTrainedTokenizerBase.from_pretrained(model_name)
         # build prompter
-        prompt_builder_args.tokenizer = tokenizer
+        prompt.tokenizer = tokenizer
 
         # DynamicPromptV2
-        output["prompts"] = [
-            prompt.build(
-                document=data["target_doc_text"],
-                n_examples=num_examples,
+        for doc_id, data in tqdm(output["data"].items(), desc="Generating prompts"):
+            output["data"][doc_id]["prompt"] = prompt.build(
+                data["target_doc_text"], n_examples=num_examples
             )
-            for doc_id, data in output["data"].items()
-        ]
 
         # checkpoint
         with open(output_path, "w") as f:
@@ -404,10 +362,11 @@ def build_cpo_dataset(
     # generate teacher queries
     if not has_teacher_queries:
         if use_vllm:
-            from .vllm_inference import generate_queries
+            from . import vllm_inference
 
-            teacher_queries = generate_queries(
-                output["prompts"], output["doc_ids"], teacher_model, dataset=dataset
+            prompts = [data["prompt"] for data in output["data"].values()]
+            teacher_queries = vllm_inference.generate_queries(
+                prompts, output["doc_ids"], teacher_model, dataset=dataset
             )
         else:
             # load model and tokenizer
@@ -415,13 +374,9 @@ def build_cpo_dataset(
             teacher_tokenizer = PreTrainedTokenizerBase.from_pretrained(teacher_model)
             teacher_model = PreTrainedModel.from_pretrained(teacher_model)
             # build prompter
-            prompt_builder_args.tokenizer = teacher_tokenizer
-            prompt_builder = DeterministicPrompt(**prompt_builder_args._asdict())
 
             # TODO: Not complete yet
-            teacher_queries = generate_queries(
-                teacher_model, teacher_tokenizer, output, prompt_builder
-            )
+            teacher_queries = generate_queries(teacher_model, teacher_tokenizer, output)
         for doc_id, query in teacher_queries.items():
             output["data"][doc_id]["teacher_query"] = query
 
@@ -433,10 +388,11 @@ def build_cpo_dataset(
     # generate student queries
     if not has_student_queries:
         if use_vllm:
-            from .vllm_inference import generate_queries
+            from . import vllm_inference
 
-            student_queries = generate_queries(
-                output["prompts"], output["doc_ids"], model_name, dataset=dataset
+            prompts = [data["prompt"] for data in output["data"].values()]
+            student_queries = vllm_inference.generate_queries(
+                prompts, output["doc_ids"], model_name, dataset=dataset
             )
         else:
             # load model and tokenizer
@@ -444,13 +400,9 @@ def build_cpo_dataset(
             student_tokenizer = PreTrainedTokenizerBase.from_pretrained(model_name)
             student_model = PreTrainedModel.from_pretrained(model_name)
             # build prompter
-            prompt_builder_args.tokenizer = student_tokenizer
-            prompt_builder = DeterministicPrompt(**prompt_builder_args._asdict())
 
             # TODO: Not complete yet
-            student_queries = generate_queries(
-                student_model, student_tokenizer, output, prompt_builder
-            )
+            student_queries = generate_queries(student_model, student_tokenizer, output)
 
         for doc_id, query in student_queries.items():
             output["data"][doc_id]["student_query"] = query
