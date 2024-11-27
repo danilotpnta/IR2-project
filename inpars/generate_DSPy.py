@@ -7,6 +7,7 @@ import pandas as pd
 from serve_model import serve_model
 from config import MODEL_PORT_MAPPING, STOP_WORDS
 from huggingface_hub import list_repo_files, hf_hub_download
+import time
 
 litellm.set_verbose = False
 
@@ -83,7 +84,7 @@ def generate_queries(model_name: str, dataset: str):
         cache=False,
     )
     dspy.configure(lm=lm)
-
+    
     class DocumentToQuery(dspy.Signature):
         """Extract a single relevant query that encompasses the document."""
 
@@ -92,39 +93,49 @@ def generate_queries(model_name: str, dataset: str):
             desc="A single relevant query ending in '?' that represents the document.",
         )
 
-    qa_cot = dspy.ChainOfThought(DocumentToQuery)
+    class SimpleDocumentToQuery(dspy.Signature):
+        """Generate a relevant query from the document."""
 
-    # Loads the queries.jsonl file into a dataframe
+        document = dspy.InputField(desc="The document text.")
+        query = dspy.OutputField(desc="A relevant query ending in '?'")
+
+    # Create predictors for both strategies
+    strategies = {
+        "CoT": dspy.ChainOfThought(DocumentToQuery),
+        "Zero-shot": dspy.Predict(SimpleDocumentToQuery),
+    }
+
     df = pd.read_json(f"data/{dataset}/queries.jsonl", lines=True)
-
-    # Extract the required columns
     prompts = df["text"]
     doc_ids = df["doc_id"]
 
-    # save the prompts to a CSV file
-    # prompts.to_csv(f"data/{dataset}/prompts.csv", index=False)
-    # doc_ids.to_csv(f"data/{dataset}/doc_ids.csv", index=False)
+    if not os.path.exists(f"data/{dataset}/prompts.csv"):
+        prompts.to_csv(f"data/{dataset}/prompts.csv", index=False)
+        doc_ids.to_csv(f"data/{dataset}/doc_ids.csv", index=False)
 
-    # sample the first 10 prompts and doc_ids
-    prompts = prompts.head(1_000).tolist()
-    doc_ids = doc_ids.head(1_000).tolist()
+    # Compute queries on a small subset of the data
+    prompts = df["text"].head(100).tolist()
+    doc_ids = df["doc_id"].head(100).tolist()
 
-    # print(prompts)
+    for strategy_name, predictor in strategies.items():
+        start_time = time.time()
+        outputs = [predictor(document=prompt, cache=False) for prompt in prompts]
+        end_time = time.time()
+        elapsed_time = end_time - start_time
 
-    outputs = [qa_cot(document=prompt) for prompt in prompts]
-    generations = [(d_id, output.query) for d_id, output in zip(doc_ids, outputs)]
+        generations = [(d_id, output.query) for d_id, output in zip(doc_ids, outputs)]
 
-    # generations = []
-    # outputs = qa_cot(document=prompts[0], use_tqdm=True)
-    # print(outputs.query)
-    # generations += [(d_id, output) for d_id, output in zip(doc_ids, outputs)]
-
-    save_path = f"data/{dataset}/queries_{model_name.split('/')[-1]}.jsonl"
-
-    save = pl.DataFrame(
-        generations, schema={"doc_id": str, "query": str}, strict=False, orient="row"
-    )
-    save.write_ndjson(save_path)
+        save_path = (
+            f"data/{dataset}/queries_{model_name.split('/')[-1]}_{strategy_name}.jsonl"
+        )
+        save = pl.DataFrame(
+            generations,
+            schema={"doc_id": str, "query": str},
+            strict=False,
+            orient="row",
+        )
+        save.write_ndjson(save_path)
+        print(f"Strategy {strategy_name} took {elapsed_time:.2f} seconds")
 
 
 def main():
