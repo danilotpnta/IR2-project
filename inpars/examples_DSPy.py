@@ -1,11 +1,11 @@
-import os
 import sys
 import dspy
 import litellm
-# os.environ["LITELLM_LOG"] = "DEBUG"
-# litellm.set_verbose = True
 
-STOP_WORDS = ["\n", "\n\n", "Bad Question:", "Example", "Document:"]
+litellm.set_verbose = False
+
+from config import MODEL_PORT_MAPPING, STOP_WORDS
+
 
 def ask_simple_questions(lm):
     qa = dspy.Predict("question: str -> response: str")
@@ -47,21 +47,40 @@ def ask_Trec_Covid_questions(lm):
     # Comparing outputs from dspy.Modules vs using only lm(..)
     # Doc 0: Canadian COVID-19 outbreak
     qaDocQ = dspy.Predict("document -> query")
-    response = qaDocQ(
-        document=prompt_0,
-        config={
-            "max_tokens": 64,
-            "stop": ["\n", "\n\n", "Bad Question:", "Example", "Document:"],
-        },
-    )
+    response = qaDocQ(document=prompt_0)
     print("\n** New response dspy.Predict Doc 0 **")
     print(f"## InPars Query: {qgen_by_InPars_0}")
     print(response.query)
 
-    response = lm(prompt=prompt_0, use_cache=False, max_tokens=64, stop=["\n", "\n\n"])
+    response = lm(prompt=prompt_0, use_cache=False)
     print("\n** New response lm Doc 0 **")
     print(f"## InPars Query: {qgen_by_InPars_0}")
     print(response)
+
+    # lm = dspy.LM(
+    #     "openai/meta-llama/Llama-3.1-8B",
+    #     api_base="http://localhost:8001/v1",  # ensure this points to your port
+    #     api_key="None",
+    #     model_type="text",
+    # )
+    # dspy.configure(lm=lm)
+
+    class DocumentToQuery(dspy.Signature):
+        """Extract a single relevant query that encompasses the document."""
+
+        document = dspy.InputField(desc="The full document text to analyze.")
+        query = dspy.OutputField(
+            desc="A single relevant query ending in '?' that represents the document. Take into account the relevant information in the document.",
+        )
+
+    qa_cot = dspy.ChainOfThought(DocumentToQuery)
+    # qa_cot = dspy.ChainOfThought("document -> query")
+    response = qa_cot(document=base_0)
+    print("\n** New response dspy.ChainOfThought **")
+    print(response)
+    # print(response.reasoning)
+
+    sys.exit(0)
 
     # response = lm._generate(
     #     prompt=prompt_0, use_cache=False, max_tokens=64, stop=["\n", "\n\n"]
@@ -77,15 +96,18 @@ def ask_Trec_Covid_questions(lm):
     # sys.exit(0)
     response = qaDocQ(document=prompt_1)
     print("\n** New response qaDocQ Doc 1 **")
+    print(f"## InPars Query: {qgen_by_InPars_1}")
     print(response.query)
 
     # Doc 1: Pitfalls in telemedicine consultations
-    response = lm(prompt=prompt_1, use_cache=False, max_tokens=64)
+    response = lm(prompt=prompt_1, use_cache=False)
     print("\n** New response lm Doc 1 **")
+    print(f"## InPars Query: {qgen_by_InPars_1}")
     print(response)
 
-    response = qaDocQ(document=prompt_1_1, max_tokens=64)
+    response = qaDocQ(document=prompt_1_1)
     print("\n** New response qaDocQ Doc 1 + Prefix **")
+    print(f"## InPars Query: {qgen_by_InPars_1}")
     print(response.query)
 
     common_prompts = {
@@ -115,7 +137,6 @@ def ask_Trec_Covid_questions(lm):
             follow_up_Q[prompt_key] = [base + text, text]
 
     # Generate and display responses
-    responses = ""
     for k, v in follow_up_Q.items():
         doc_name = (
             "Doc 0: Canadian COVID-19 outbreak"
@@ -130,24 +151,21 @@ def ask_Trec_Covid_questions(lm):
         print(f"## InPars Query: {inpars_query}")
 
         # Generate response using lm
-        response = lm(prompt=v[0], use_cache=False, max_tokens=64)
-        responses += response[0]  # Append first token of the response
+        response = lm(prompt=v[0], use_cache=False)
         print(response)
-
-    # TODO: Filter responses to only obtain question ie "..?" otherwhise GPT-J
-    # is a token-by-token text generation and do not follow up with instruction-tuned tasks
-    # print("\n** New response Redefined **")
-    # redefine_response = base + responses + "\nMost relevant question:"
-    # print("\nRedefined response: ", redefine_response)
-    # response = lm(prompt=redefine_response, max_tokens=64)
-    # print("\nRefined Query: ",response)
 
 
 def main():
-    model_name = "meta-llama/Llama-3.1-8B"
-
-    lm_HF = dspy.HFClientVLLM(model=model_name, port=8000, url="http://localhost", stop=STOP_WORDS)
-    dspy.configure(lm=lm_HF, stop=STOP_WORDS)
+    model_name = "neuralmagic/Llama-3.1-Nemotron-70B-Instruct-HF-FP8-dynamic"
+    lm_HF = dspy.HFClientVLLM(
+        model=model_name,
+        port=MODEL_PORT_MAPPING[model_name],
+        url="http://localhost",
+        stop=STOP_WORDS,
+        max_tokens=64,
+        cache=False,
+    )
+    dspy.configure(lm=lm_HF)
     print("-- Questions using HFClientVLLM -- ")
     # ask_simple_questions(lm_HF)
     ask_Trec_Covid_questions(lm_HF)

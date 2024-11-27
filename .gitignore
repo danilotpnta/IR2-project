@@ -176,3 +176,4 @@ bin/
 # logs from the jobs
 logs/
 
+data/
