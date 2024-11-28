@@ -162,7 +162,7 @@ def score_queries(
         scores = query_eval.score(queries=queries_batch, doc_indices=doc_ids_batch)
         # save the scores
         for doc_id, score in zip(doc_ids_batch, scores):
-            doc_id_score_map[doc_id] = score
+            doc_id_score_map[doc_id] = score.item()
     return doc_id_score_map
 
 
