@@ -143,7 +143,7 @@ def score_queries(
     - doc_query_pairs: Dict[str, str] -- doc_id -> query_text map
     - query_eval: QueryEval -- the query evaluation object, already initialized
 
-    The dataset should be a list of dictionaries with the following fields:
+    The dataset should be a dictionary with the following format:
     - "doc_id": str -- the document id
     - "query": str -- the query text
     """
@@ -339,7 +339,9 @@ def build_cpo_dataset(
     # load the dataset
     if not has_docs_queries:
         # sample num_samples document-query pairs from the dataframe
-        samples = dataset.sample(num_samples, random_state=seed).drop_duplicates(subset='doc_id') # .dropna()
+        samples = dataset.sample(num_samples, random_state=seed).drop_duplicates(
+            subset="doc_id"
+        )  # .dropna()
 
         output["doc_ids"] = samples["doc_id"].tolist()
         for row in samples.itertuples():
@@ -420,7 +422,7 @@ def build_cpo_dataset(
 
             # TODO: Not complete yet
             teacher_queries = generate_queries(teacher_model, teacher_tokenizer, output)
-        
+
         for doc_id, query in teacher_queries.items():
             text, logprobs, cumlogprob = query
             output["data"][doc_id]["teacher_query"] = text
@@ -464,11 +466,13 @@ def build_cpo_dataset(
             query_eval = QueryEval.load_from_cache(output_dir)
         except ValueError:
             query_eval = QueryEval()
-            documents = {
-                doc_id: data["target_doc_text"]
+            documents = [
+                (doc_id, data["target_doc_text"])
                 for doc_id, data in output["data"].items()
-            }
-            query_eval.load_dataset(documents)
+            ]
+            documents = pd.DataFrame(documents, columns=("doc_id", "text"))
+
+            query_eval.load_dataset(documents, batch_size=128)
             # checkpoint
             query_eval.save_to_cache(output_dir)
             logger.info(f"Saved query evaluator to {output_dir}")
@@ -478,6 +482,7 @@ def build_cpo_dataset(
         ref_doc_query_pairs = {
             doc_id: data["ref_query"] for doc_id, data in output["data"].items()
         }
+
         scores = score_queries(ref_doc_query_pairs, query_eval)
 
         for doc_id, score in scores.items():

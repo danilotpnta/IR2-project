@@ -1,3 +1,4 @@
+import logging
 import os
 import json
 
@@ -30,6 +31,7 @@ def generate_queries(
     try:
         with open(save_file, "r") as f:
             generations = json.load(f)
+        logging.info(f"Found {len(generations)} saved generations.")
     except:
         generations = {}
 

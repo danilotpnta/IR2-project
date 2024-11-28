@@ -1,4 +1,4 @@
-from typing import List, Optional, Union, Dict, Tuple
+from typing import List, Optional, Self, Union, Dict, Tuple
 import logging
 from pathlib import Path
 import json
@@ -79,7 +79,7 @@ class QueryEval(torch.nn.Module):
         logger.info("Computing embeddings for %s%s", self.dense_name,
                     " and BM25" if self.bm25 else "")
         # save the mapping of doc_id to index
-        self.doc_id2idx = {doc_id: idx for idx, doc_id in enumerate(documents['doc_id'])}
+        self.doc_id2idx = {doc_id: idx for idx, doc_id in enumerate(documents["doc_id"])}
         # compute embeddings for each model and store them on cpu
         documents = documents['text'].tolist()
         self.doc_embeddings = []
@@ -100,7 +100,8 @@ class QueryEval(torch.nn.Module):
 
         logger.info("Document corpus loaded successfully")
 
-    def _prepare_cache(self, cache_path: Path) -> None:
+    @staticmethod
+    def _prepare_cache(cache_path: Path):
         index_path = cache_path / "index.json"
         embedding_path = cache_path / "embeddings.pt"
         bm25_path = cache_path / "bm25.pkl"
@@ -122,27 +123,29 @@ class QueryEval(torch.nn.Module):
             self.bm25.save(bm25_path)
         logger.info("Saved embeddings to %s", cache_path)
 
-    def load_from_cache(self, cache_path: Path) -> None:
+    @classmethod
+    def load_from_cache(cls, cache_path: Path, bm25 = True) -> Self:
         """Load precomputed embeddings from cache.
         Args:
             cache_path: Path to the cache file
         Loads a pandas DataFrame with columns ['doc_id', 'embedding'] from the cache file.
         """
+        
         if not cache_path.exists() or not cache_path.is_dir():
             raise ValueError("Cache directory does not exist.")
-        index_path, embedding_path, bm25_path = self._prepare_cache(cache_path)
+        index_path, embedding_path, bm25_path = cls._prepare_cache(cache_path)
         if not index_path.exists():
             raise ValueError("Index file not found in cache.")
         if not embedding_path.exists():
             raise ValueError("Embedding file not found in cache.")
-        if self.bm25 and not bm25_path.exists():
+        if bm25 and not bm25_path.exists():
             raise ValueError("BM25 file not found in cache.")
         with open(index_path, "r") as f:
-            self.doc_id2idx = json.load(f)
-        self.doc_embeddings = torch.load(embedding_path)
-        if self.bm25:
-            self.bm25 = BM25.load(bm25_path)
+            cls.doc_id2idx = json.load(f)
+        cls.doc_embeddings = torch.load(embedding_path)
+        cls.bm25 = BM25.load(bm25_path)
         logger.info("Loaded embeddings from %s", cache_path)
+        return cls
 
     def score(self,
               queries: Union[str, List[str]],
