@@ -125,25 +125,26 @@ class QueryEval(torch.nn.Module):
             self.bm25.save(bm25_path)
         logger.info("Saved embeddings to %s", cache_path)
 
-    @classmethod
-    def load_from_cache(cls, cache_path: Path) -> 'QueryEval':
+    @staticmethod
+    def load_from_cache(cache_path: Path, *args, **kwargs) -> 'QueryEval':
         """Load precomputed embeddings from cache.
         Args:
             cache_path: Path to the cache file
         Loads a pandas DataFrame with columns ['doc_id', 'embedding'] from the cache file.
         """
-        index_path, embedding_path, bm25_path, weights_path = cls._prepare_cache(cache_path)
+        _cls = QueryEval(*args, **kwargs)
+        index_path, embedding_path, bm25_path, weights_path = _cls._prepare_cache(cache_path)
         if not index_path.exists() or not embedding_path.exists() or not weights_path.exists():
             return None
 
         with open(index_path, "r") as f:
-            cls.doc_id2idx = json.load(f)
-        cls.doc_embeddings = torch.load(embedding_path)
-        cls.weights = torch.load(weights_path)
+            _cls.doc_id2idx = json.load(f)
+        _cls.doc_embeddings = torch.load(embedding_path)
+        _cls.weights = torch.load(weights_path)
         if bm25_path.exists():
-            cls.bm25 = BM25.load(bm25_path)
+            _cls.bm25 = BM25.load(bm25_path)
         logger.info("Loaded embeddings from %s", cache_path)
-        return cls
+        return _cls
 
     def score(self,
               queries: Union[str, List[str]],
