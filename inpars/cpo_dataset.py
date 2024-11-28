@@ -1,21 +1,21 @@
-from typing import Any, Callable, Dict, Optional, Tuple, List
-import os
 import json
-import yaml
 import logging
-from tqdm import tqdm
 from pathlib import Path
-from collections import namedtuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import ftfy
 import ir_datasets
 import numpy as np
 import pandas as pd
-from transformers import PreTrainedModel, PreTrainedTokenizerBase
+from tqdm import tqdm
+from tqdm.contrib.concurrent import process_map
+from transformers import AutoModel, AutoTokenizer
 
-from .query_eval import QueryEval
+from inpars.utils import _process_map_p
+
 from .prompt import Prompt
-
+from .query_eval import QueryEval
+from .utils import _process_map_d, _process_map_q
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +31,7 @@ def load_cpo_dataset(source_path: Path):
 def continue_from_checkpoint(
     output_path: Path, dataset_name: str, num_samples: Optional[int] = None
 ):
-    output = {"dataset_name": dataset_name, "doc_ids": [], "data": []}
+    output = {"dataset_name": dataset_name, "doc_ids": [], "data": {}}
     # flags to continue from where we left off
     has_docs_queries = False
     has_prompts = False
@@ -48,7 +48,7 @@ def continue_from_checkpoint(
             len(output["doc_ids"]) == num_samples
         ):  # start from scratch
             return output, False, False, False, False, False, False, False
-        data = output["data"].values().next()
+        data = next(iter(output["data"].values()))
         has_docs_queries = (
             "target_doc_text" in data
             and "ref_query" in data
@@ -99,8 +99,8 @@ def create_prompts(
 
 
 def generate_queries(
-    model: PreTrainedModel,
-    tokenizer: PreTrainedTokenizerBase,
+    model: AutoModel,
+    tokenizer: AutoTokenizer,
     dataset: Dict[str, Any],  # the dataset we built, not the dataframe
     batch_size: int = 32,
 ):
@@ -244,9 +244,12 @@ def build_cpo_dataset(
     if not dataset_name.startswith("msmarco-document"):
         raise NotImplementedError("Only MS-MARCO is supported for now.")
 
+    if "/" in model_name:
+        _model_name = model_name.split("/")[-1]
+
     output_path = (
         output_dir
-        / f"llmt_preference_{model_name}_{dataset_name}{f'_{num_samples}' if num_samples else ''}.json"
+        / f"llmt_preference_{_model_name}_{dataset_name.replace('/','-')}{f'_{num_samples}' if num_samples else ''}.json"
     )
     dataset_path = output_dir / "combined_data.csv"
 
@@ -270,20 +273,40 @@ def build_cpo_dataset(
                 documents[doc_id] = None
                 queries[query_id] = None
                 qd_map[query_id] = doc_id
+
         # load documents
-        for doc_id in tqdm(
-            dataset.docs_iter(), total=len(documents), desc="Loading documents"
-        ):
-            doc_id, url, title, body = doc_id
-            # NOTE: body is too long (avg 1000 words) so we only use title
-            documents[doc_id] = ftfy.fix_text(title)
-        # load queries
-        for query_id in tqdm(
-            dataset.queries_iter(), total=len(queries), desc="Loading queries"
-        ):
-            query_id, text = query_id
-            queries[query_id] = ftfy.fix_text(text)
+        # for doc_id, doc in tqdm(
+        #     dataset.docs_store().get_many(documents.keys()).items(), total=len(documents), desc="Loading documents"
+        # ):
+        #     # NOTE: body is too long (avg 1000 words) so we only use title
+        #     documents[doc_id] = ftfy.fix_text(doc.title + " " + doc.body)
+
+        _docs = process_map(
+            _process_map_d,
+            dataset.docs_store().get_many(documents.keys()).items(),
+            chunksize=128,
+            total=len(documents),
+            desc="Loading documents",
+        )
+        documents = {doc_id: doc for doc_id, doc in _docs}
+        del _docs
+
+        # for query_id in tqdm(
+        #     dataset.queries_iter(), total=len(queries), desc="Loading queries"
+        # ):
+        #     query_id, text = query_id
+        #     queries[query_id] = ftfy.fix_text(text)
         # convert to dataframe
+        _queries = process_map(
+            _process_map_q,
+            dataset.queries_iter(),
+            chunksize=128,
+            total=len(queries),
+            desc="Loading queries",
+        )
+        queries = {query_id: query for query_id, query in _queries}
+        del _queries
+
         q_ids, q_texts, d_ids, d_texts = [], [], [], []
         for q_id, q_text in queries.items():
             q_ids.append(q_id)
@@ -298,6 +321,7 @@ def build_cpo_dataset(
                 "doc_text": d_texts,
             }
         )
+
         dataset.to_csv(dataset_path, index=False)
         logger.info(f"Saved combined dataset to {dataset_path}")
 
@@ -315,14 +339,15 @@ def build_cpo_dataset(
     # load the dataset
     if not has_docs_queries:
         # sample num_samples document-query pairs from the dataframe
-        samples = dataset.sample(num_samples, random_state=seed)
+        samples = dataset.sample(num_samples, random_state=seed).drop_duplicates(subset='doc_id') # .dropna()
+
         output["doc_ids"] = samples["doc_id"].tolist()
-        for i, row in samples.iterrows():
-            output["data"][row["doc_id"]] = {
-                "target_doc_id": row["doc_id"],
-                "target_doc_text": row["doc_text"],
-                "ref_query_id": row["query_id"],
-                "ref_query": row["query_text"],
+        for row in samples.itertuples():
+            output["data"][row.doc_id] = {
+                "target_doc_id": row.doc_id,
+                "target_doc_text": str(row.doc_text),
+                "ref_query_id": row.query_id,
+                "ref_query": row.query_text,
             }
         # checkpoint
         with open(output_path, "w") as f:
@@ -335,7 +360,10 @@ def build_cpo_dataset(
         prompt = Prompt.load(
             name=prompt_template_name,
             dataset=dataset_name,
-            examples=dataset[["query_id", "doc_id", "query_text", "doc_text"]],
+            examples=dataset[["query_id", "doc_id", "query_text", "doc_text"]]
+            .sample(num_examples * 100)
+            .to_numpy()
+            .tolist(),  # maybe we just want to filter out some random population
             tokenizer=None,  # needs to be replaced for each model
             max_doc_length=max_doc_length,
             max_query_length=max_query_length,
@@ -344,15 +372,30 @@ def build_cpo_dataset(
         )
 
         # load tokenizer
-        tokenizer = PreTrainedTokenizerBase.from_pretrained(model_name)
+        tokenizer = AutoTokenizer.from_pretrained(model_name)
         # build prompter
         prompt.tokenizer = tokenizer
 
-        # DynamicPromptV2
-        for doc_id, data in tqdm(output["data"].items(), desc="Generating prompts"):
-            output["data"][doc_id]["prompt"] = prompt.build(
-                data["target_doc_text"], n_examples=num_examples
-            )
+        # # DynamicPromptV2
+        # for doc_id, data in tqdm(output["data"].items(), desc="Generating prompts"):
+        #     data["prompt"] = prompt.build(
+        #         data["target_doc_text"], n_examples=num_examples
+        #     )
+        documents = [data["target_doc_text"] for data in output["data"].values()]
+        ids = [doc_id for doc_id in output["data"]]
+        prompts = process_map(
+            _process_map_p,
+            documents,
+            ids,
+            [prompt] * len(documents),
+            [num_examples] * len(documents),
+            chunksize=128,
+            total=len(documents),
+            desc="Generating prompts",
+        )
+
+        for doc_id, p in prompts:
+            output["data"][doc_id]["prompt"] = p
 
         # checkpoint
         with open(output_path, "w") as f:
@@ -366,19 +409,21 @@ def build_cpo_dataset(
 
             prompts = [data["prompt"] for data in output["data"].values()]
             teacher_queries = vllm_inference.generate_queries(
-                prompts, output["doc_ids"], teacher_model, dataset=dataset
+                prompts, output["doc_ids"], teacher_model, output_dir
             )
         else:
             # load model and tokenizer
             # TODO: we might want to just pass the model and tokenizer
-            teacher_tokenizer = PreTrainedTokenizerBase.from_pretrained(teacher_model)
-            teacher_model = PreTrainedModel.from_pretrained(teacher_model)
+            teacher_tokenizer = AutoTokenizer.from_pretrained(teacher_model)
+            teacher_model = AutoModel.from_pretrained(teacher_model)
             # build prompter
 
             # TODO: Not complete yet
             teacher_queries = generate_queries(teacher_model, teacher_tokenizer, output)
+        
         for doc_id, query in teacher_queries.items():
-            output["data"][doc_id]["teacher_query"] = query
+            text, logprobs, cumlogprob = query
+            output["data"][doc_id]["teacher_query"] = text
 
         # checkpoint
         with open(output_path, "w") as f:
@@ -392,20 +437,21 @@ def build_cpo_dataset(
 
             prompts = [data["prompt"] for data in output["data"].values()]
             student_queries = vllm_inference.generate_queries(
-                prompts, output["doc_ids"], model_name, dataset=dataset
+                prompts, output["doc_ids"], model_name, output_dir
             )
         else:
             # load model and tokenizer
             # TODO: we might want to just pass the model and tokenizer
-            student_tokenizer = PreTrainedTokenizerBase.from_pretrained(model_name)
-            student_model = PreTrainedModel.from_pretrained(model_name)
+            student_tokenizer = AutoTokenizer.from_pretrained(model_name)
+            student_model = AutoModel.from_pretrained(model_name)
             # build prompter
 
             # TODO: Not complete yet
             student_queries = generate_queries(student_model, student_tokenizer, output)
 
-        for doc_id, query in student_queries.items():
-            output["data"][doc_id]["student_query"] = query
+        for doc_id, query in teacher_queries.items():
+            text, logprobs, cumlogprob = query
+            output["data"][doc_id]["student_query"] = text
 
         # checkpoint
         with open(output_path, "w") as f:
@@ -496,11 +542,11 @@ if __name__ == "__main__":
         default="inparsplus",
     )
     parser.add_argument("--dataset_name", type=str, default="msmarco-document/train")
-    parser.add_argument("--num_examples", type=int, default=3)
+    parser.add_argument("--num_examples", type=int, default=2)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--max_doc_length", type=int, default=512)
     parser.add_argument("--max_query_length", type=int, default=64)
-    parser.add_argument("--max_prompt_length", type=int, default=1024)
+    parser.add_argument("--max_prompt_length", type=int, default=8192)
     parser.add_argument("--max_new_token", type=int, default=16)
     parser.add_argument("--use_vllm", action="store_true")
     args = parser.parse_args()

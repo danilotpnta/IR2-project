@@ -1,5 +1,6 @@
 import os
 import csv
+import ftfy
 import requests
 import pandas as pd
 from tqdm.auto import tqdm
@@ -80,3 +81,15 @@ class TRECRun:
 
     def save(self, path):
         self.df.to_csv(path, index=False, sep="\t", header=False, float_format="%.15f")
+
+def _process_map_q(q):
+    return q.query_id, ftfy.fix_text(q.text)
+
+def _process_map_d(d):
+    id, d = d
+    return id, ftfy.fix_text(d.title + " " + d.body)
+
+def _process_map_p(document, doc_id, prompter, n_examples=3):
+    return doc_id, prompter.build(
+        document, n_examples=n_examples
+    )

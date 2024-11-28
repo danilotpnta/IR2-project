@@ -27,7 +27,7 @@ class Prompt:
         self.max_doc_length = max_doc_length
         self.max_query_length = max_query_length
         self.max_prompt_length = max_prompt_length
-        self.max_prompt_length_words = max_prompt_length * 2 / 3  # magic number
+        self.max_prompt_length_words = int(max_prompt_length) * 2 / 3  # magic number
         self.n_generated_queries = n_generated_queries
         self.max_new_token = max_new_token
 
@@ -172,9 +172,9 @@ class DynamicPromptV2(Prompt):
                     )
                     for i in range(2, self.n_generated_queries + 1)
                 }
-                prompt += template.format(document=doc, **queries) + "\n\n"
+                prompt += template.format(document=doc.strip(), **queries) + "\n\n"
             else:
-                prompt += template.format(document=doc, query=query) + "\n\n"
+                prompt += template.format(document=doc.strip(), query=query) + "\n\n"
 
         document = ftfy.fix_text(document)
         if self.max_doc_length:
@@ -185,9 +185,9 @@ class DynamicPromptV2(Prompt):
             )
 
         if self.n_generated_queries > 1:
-            prompt += f"{context.format(document=document)}\n{query_str}".rstrip()
+            prompt += f"{context.format(document=document.strip())}\n{query_str}".rstrip()
         else:
-            prompt += template.format(document=document, query="").rstrip()
+            prompt += template.format(document=document.strip(), query="").rstrip()
 
         if self.max_prompt_length:
             prompt_length = len(self.tokenizer.tokenize(prompt))
