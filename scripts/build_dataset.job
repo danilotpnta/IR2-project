@@ -1,0 +1,43 @@
+#!/bin/bash
+
+#SBATCH --partition=gpu_h100
+#SBATCH --gpus=1
+
+#SBATCH --job-name=BUILD_DATASET
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=4
+#SBATCH --time=00:59:00
+#SBATCH --output=/scratch-shared/scur2850/logs/build_%A.out
+
+#SBATCH --ear=on
+#SBATCH --ear-policy=monitoring
+#SBATCH --ear-verbose=1
+
+date
+export HF_HOME="/scratch-shared/$USER"
+export GPU_COUNT=$(nvidia-smi --list-gpus | wc -l)
+
+# make sure the correct modules are used and that the virtual environment is active
+PROJECT_ROOT=/home/$USER/IR2-project
+source $PROJECT_ROOT/scripts/snellius_setup.sh
+setup $PROJECT_ROOT
+cd $PROJECT_ROOT
+
+MODEL_NAME="neuralmagic/Meta-Llama-3.1-8B-Instruct-FP8"
+TEACHER_MODEL="neuralmagic/Llama-3.1-Nemotron-70B-Instruct-HF-FP8-dynamic"
+OUTPUT_DIR="/scratch-shared/$USER/cpo_dataset"
+NUM_SAMPLES=100
+PROMPT_TEMPLATE_NAME="inparsplus"
+DATASET_NAME="msmarco-document/train"
+NUM_EXAMPLES=2
+
+# rest of the script
+srun python -m inpars.cpo_dataset \
+--model_name $MODEL_NAME \
+--teacher_model $TEACHER_MODEL \
+--output_dir $OUTPUT_DIR \
+--num_samples $NUM_SAMPLES \
+--prompt_template_name $PROMPT_TEMPLATE_NAME \
+--dataset_name $DATASET_NAME \
+--num_examples $NUM_EXAMPLES \
+--use_vllm
