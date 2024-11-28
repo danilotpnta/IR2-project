@@ -373,7 +373,7 @@ def build_cpo_dataset(
             max_new_token=max_new_token,
         )
 
-        # load tokenizer
+        # load tokenizer NOTE: this only works if the student and the teacher have the same tokenizer
         tokenizer = AutoTokenizer.from_pretrained(model_name)
         # build prompter
         prompt.tokenizer = tokenizer
@@ -462,9 +462,8 @@ def build_cpo_dataset(
 
     # initialize or load query evaluator
     if query_eval is None:
-        try:
-            query_eval = QueryEval.load_from_cache(output_dir)
-        except ValueError:
+        query_eval = QueryEval.load_from_cache(output_dir)
+        if query_eval is None:
             query_eval = QueryEval()
             documents = [
                 (doc_id, data["target_doc_text"])

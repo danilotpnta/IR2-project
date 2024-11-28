@@ -1,4 +1,4 @@
-from typing import List, Optional, Self, Union, Dict, Tuple
+from typing import List, Optional, Union, Dict, Tuple
 import logging
 from pathlib import Path
 import json
@@ -88,7 +88,7 @@ class QueryEval(torch.nn.Module):
             embeddings = self._get_embeddings(batch)
             self.doc_embeddings.append(embeddings)
         # concatenate
-        self.doc_embeddings = torch.cat(self.doc_embeddings, dim=1)
+        self.doc_embeddings = torch.cat(self.doc_embeddings, dim=0).cpu()
         logger.debug("nr of documents: %d", len(documents))
         logger.debug("Document embeddings shape: %s", self.doc_embeddings.shape)
 
@@ -102,10 +102,11 @@ class QueryEval(torch.nn.Module):
 
     @staticmethod
     def _prepare_cache(cache_path: Path):
-        index_path = cache_path / "index.json"
-        embedding_path = cache_path / "embeddings.pt"
-        bm25_path = cache_path / "bm25.pkl"
-        return index_path, embedding_path, bm25_path
+        index_path = cache_path / "query_eval_index.json"
+        embedding_path = cache_path / "query_eval_embeddings.pt"
+        bm25_path = cache_path / "query_eval_bm25.pkl"
+        weights_path = cache_path / "query_eval_weights.pt"
+        return index_path, embedding_path, bm25_path, weights_path
 
     def save_to_cache(self, cache_path: Path) -> None:
         """Save precomputed embeddings to cache.
@@ -115,35 +116,32 @@ class QueryEval(torch.nn.Module):
         """
         if not cache_path.exists():
             cache_path.mkdir(parents=True)
-        index_path, embedding_path, bm25_path = self._prepare_cache(cache_path)
+        index_path, embedding_path, bm25_path, weights_path = self._prepare_cache(cache_path)
         with open(index_path, "w") as f:
             json.dump(self.doc_id2idx, f)
         torch.save(self.doc_embeddings, embedding_path)
+        torch.save(self.weights, weights_path)
         if self.bm25:
             self.bm25.save(bm25_path)
         logger.info("Saved embeddings to %s", cache_path)
 
     @classmethod
-    def load_from_cache(cls, cache_path: Path, bm25 = True) -> Self:
+    def load_from_cache(cls, cache_path: Path) -> 'QueryEval':
         """Load precomputed embeddings from cache.
         Args:
             cache_path: Path to the cache file
         Loads a pandas DataFrame with columns ['doc_id', 'embedding'] from the cache file.
         """
-        
-        if not cache_path.exists() or not cache_path.is_dir():
-            raise ValueError("Cache directory does not exist.")
-        index_path, embedding_path, bm25_path = cls._prepare_cache(cache_path)
-        if not index_path.exists():
-            raise ValueError("Index file not found in cache.")
-        if not embedding_path.exists():
-            raise ValueError("Embedding file not found in cache.")
-        if bm25 and not bm25_path.exists():
-            raise ValueError("BM25 file not found in cache.")
+        index_path, embedding_path, bm25_path, weights_path = cls._prepare_cache(cache_path)
+        if not index_path.exists() or not embedding_path.exists() or not weights_path.exists():
+            return None
+
         with open(index_path, "r") as f:
             cls.doc_id2idx = json.load(f)
         cls.doc_embeddings = torch.load(embedding_path)
-        cls.bm25 = BM25.load(bm25_path)
+        cls.weights = torch.load(weights_path)
+        if bm25_path.exists():
+            cls.bm25 = BM25.load(bm25_path)
         logger.info("Loaded embeddings from %s", cache_path)
         return cls
 

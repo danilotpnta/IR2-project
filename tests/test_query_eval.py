@@ -30,25 +30,27 @@ def query_eval():
     return QueryEval()
 
 def test_load_dataset(documents, query_eval):
-    query_eval.load_dataset(documents)
+    query_eval.load_dataset(documents, batch_size=2)
     assert isinstance (query_eval.bm25, BM25)
     assert query_eval.doc_embeddings is not None
     assert query_eval.doc_embeddings.shape[0] == 3
+    assert query_eval.doc_embeddings.shape[1] == 768
 
 def test_save_and_load_cache(documents, query_eval, tmp_path):
     query_eval.load_dataset(documents)
     cache_path = tmp_path / "cache"
     query_eval.save_to_cache(cache_path)
     assert cache_path.exists()
-    index_path = cache_path / "index.json"
-    embedding_path = cache_path / "embeddings.pt"
-    bm25_path = cache_path / "bm25.pkl"
+    index_path = cache_path / "query_eval_index.json"
+    embedding_path = cache_path / "query_eval_embeddings.pt"
+    bm25_path = cache_path / "query_eval_bm25.pkl"
+    weights_path = cache_path / "query_eval_weights.pt"
     assert index_path.exists()
     assert embedding_path.exists()
     assert bm25_path.exists()
+    assert weights_path.exists()
 
-    new_query_eval = QueryEval()
-    new_query_eval.load_from_cache(cache_path)
+    new_query_eval = QueryEval.load_from_cache(cache_path)
     assert torch.all(new_query_eval.doc_embeddings == query_eval.doc_embeddings)
 
 def test_score_single_query_single_doc(documents, queries, query_eval):
