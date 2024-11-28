@@ -1,13 +1,15 @@
 import os
+import sys
 import dspy
+import time
 import litellm
 import argparse
 import polars as pl
 import pandas as pd
+from tqdm import tqdm
 from serve_model import serve_model
 from config import MODEL_PORT_MAPPING, STOP_WORDS
 from huggingface_hub import list_repo_files, hf_hub_download
-import time
 
 litellm.set_verbose = False
 
@@ -52,6 +54,8 @@ def parse_args():
 
 
 def download_queries(data_dir: str, repo_id: str = "inpars/generated-data"):
+    """Download the InPars queries from the Hugging Face Hub."""
+
     data_path = os.path.join(data_dir, "data")
     os.makedirs(data_path, exist_ok=True)
 
@@ -73,7 +77,67 @@ def download_queries(data_dir: str, repo_id: str = "inpars/generated-data"):
     print(f"InPars queries downloaded and saved to {data_path}")
 
 
+def prepare_data(dataset_path, limit=None):
+    """Load and prepare the dataset for query generation."""
+
+    df = pd.read_json(dataset_path, lines=True)
+    if "text" in df.columns:
+        prompts = df["text"]
+    elif "doc_text" in df.columns:
+        prompts = df["doc_text"]
+    else:
+        raise ValueError(
+            "Neither 'text' nor 'doc_text' column exists in the DataFrame."
+        )
+
+    doc_ids = df["doc_id"]
+
+    if not os.path.exists(f"{os.path.dirname(dataset_path)}/prompts.csv"):
+        prompts.to_csv(f"{os.path.dirname(dataset_path)}/prompts.csv", index=False)
+        doc_ids.to_csv(f"{os.path.dirname(dataset_path)}/doc_ids.csv", index=False)
+
+    if limit is not None:
+        prompts = prompts.head(limit)
+        doc_ids = doc_ids.head(limit)
+
+    return prompts.tolist(), doc_ids.tolist()
+
+
+class DocumentToQuery(dspy.Signature):
+    """Extract a single relevant query that encompasses the document."""
+
+    document = dspy.InputField(desc="The full document text to analyze.")
+    query = dspy.OutputField(
+        desc="A single relevant query ending in '?' that represents the document.",
+    )
+
+
+class SimpleDocumentToQuery:
+    """Generate a single relevant query that encompasses the document."""
+
+    def __init__(self, document, lm):
+        """
+        Initialize with a document and a language model client (lm).
+        Automatically generate the query upon instantiation.
+        """
+        self.document = document
+        self.query = self._generate(lm)
+
+    def _generate(self, lm):
+        """
+        Generate a query by appending 'Relevant Question:' to the document.
+        """
+        prompt = f"{self.document}\nRelevant Question:"
+        response = lm(prompt=prompt, use_tqdm=True)
+
+        if isinstance(response, list):
+            response = response[0]
+
+        return response.strip()
+
+
 def generate_queries(model_name: str, dataset: str):
+    """Generate queries for a given dataset using a specified model."""
 
     lm = dspy.HFClientVLLM(
         model=model_name,
@@ -84,44 +148,31 @@ def generate_queries(model_name: str, dataset: str):
         cache=False,
     )
     dspy.configure(lm=lm)
-    
-    class DocumentToQuery(dspy.Signature):
-        """Extract a single relevant query that encompasses the document."""
 
-        document = dspy.InputField(desc="The full document text to analyze.")
-        query = dspy.OutputField(
-            desc="A single relevant query ending in '?' that represents the document.",
-        )
-
-    class SimpleDocumentToQuery(dspy.Signature):
-        """Generate a relevant query from the document."""
-
-        document = dspy.InputField(desc="The document text.")
-        query = dspy.OutputField(desc="A relevant query ending in '?'")
-
-    # Create predictors for both strategies
+    # Define strategies
     strategies = {
+        # "Zero-shot": lambda document: SimpleDocumentToQuery(document, lm),
         "CoT": dspy.ChainOfThought(DocumentToQuery),
-        "Zero-shot": dspy.Predict(SimpleDocumentToQuery),
     }
 
-    df = pd.read_json(f"data/{dataset}/queries.jsonl", lines=True)
-    prompts = df["text"]
-    doc_ids = df["doc_id"]
+    # Prepare dataset
+    dataset_path = f"data/{dataset}/queries.jsonl"
+    prompts, doc_ids = prepare_data(dataset_path, 
+                                    # limit=14
+                                    )
 
-    if not os.path.exists(f"data/{dataset}/prompts.csv"):
-        prompts.to_csv(f"data/{dataset}/prompts.csv", index=False)
-        doc_ids.to_csv(f"data/{dataset}/doc_ids.csv", index=False)
+    outputs = dspy.ChainOfThought(DocumentToQuery).batch([dspy.Example(document=p).with_inputs('document') for p in prompts[-10:]])
+    print(outputs)
+    sys.exit()
 
-    # Compute queries on a small subset of the data
-    prompts = df["text"].head(100).tolist()
-    doc_ids = df["doc_id"].head(100).tolist()
-
+    # Generate queries per Strategy
     for strategy_name, predictor in strategies.items():
         start_time = time.time()
-        outputs = [predictor(document=prompt, cache=False) for prompt in prompts]
+        outputs = [
+            predictor(document=prompt)
+            for prompt in tqdm(prompts, desc=f"Processing {strategy_name}")
+        ]
         end_time = time.time()
-        elapsed_time = end_time - start_time
 
         generations = [(d_id, output.query) for d_id, output in zip(doc_ids, outputs)]
 
@@ -135,6 +186,8 @@ def generate_queries(model_name: str, dataset: str):
             orient="row",
         )
         save.write_ndjson(save_path)
+
+        elapsed_time = end_time - start_time
         print(f"Strategy {strategy_name} took {elapsed_time:.2f} seconds")
 
 
@@ -142,7 +195,7 @@ def main():
     args = parse_args()
 
     download_queries(args.data_dir)
-    serve_model(args.generationLLM)
+    # serve_model(args.generationLLM)
     generate_queries(args.generationLLM, args.dataset)
 
 

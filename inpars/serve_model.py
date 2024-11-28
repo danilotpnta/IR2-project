@@ -102,5 +102,5 @@ def serve_model(
 
 
 if __name__ == "__main__":
-    model_name = "neuralmagic/Llama-3.1-Nemotron-70B-Instruct-HF-FP8-dynamic"
+    model_name = "meta-llama/Llama-3.1-8B"
     serve_model(model_name)
