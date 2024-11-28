@@ -8,10 +8,16 @@ import argparse
 import polars as pl
 import pandas as pd
 from tqdm import tqdm
-from config import MODEL_PORT_MAPPING, STOP_WORDS
+from transformers import AutoTokenizer
+from config import MODEL_PORT_MAPPING, STOP_WORDS, MAX_TOKENS
 from huggingface_hub import list_repo_files, hf_hub_download
 
 litellm.set_verbose = False
+
+# Suppress TensorFlow INFO and WARNING logs
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+# Disable oneDNN custom operations
+os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
 
 
 def parse_args():
@@ -77,7 +83,7 @@ def download_queries(data_dir: str, repo_id: str = "inpars/generated-data"):
     print(f"InPars queries downloaded and saved to {data_path}")
 
 
-def prepare_data(dataset_path, limit=None):
+def prepare_data(dataset_path, max_new_tokens=64, limit=None):
     """Load and prepare the dataset for query generation."""
 
     df = pd.read_json(dataset_path, lines=True)
@@ -100,8 +106,50 @@ def prepare_data(dataset_path, limit=None):
         prompts = prompts.head(limit)
         doc_ids = doc_ids.head(limit)
 
+    model_name = dspy.settings.lm.kwargs["model"]
+    print(model_name)
+    tokenizer = AutoTokenizer.from_pretrained(model_name)
+
+    model_context_length = MAX_TOKENS.get(model_name, 2048)
+    print(MAX_TOKENS.get(model_name, 2048))
+    max_prompt_len = int(0.975 * model_context_length - max_new_tokens)
+    needs_truncation = prompts.str.len() > model_context_length
+    
+    print(doc_ids[needs_truncation])
+    print("before: \n", prompts[needs_truncation].str.len())
+
+    if needs_truncation.any():
+        truncated_prompts = prompts[needs_truncation].apply(
+            lambda doc: tokenizer.decode(
+                tokenizer(
+                    doc,
+                    truncation=True,
+                    max_length=max_prompt_len,
+                    add_special_tokens=False,
+                )["input_ids"],
+                skip_special_tokens=True,
+            )
+        )
+        prompts.loc[needs_truncation] = truncated_prompts
+    
+    print("after: \n", prompts[needs_truncation].str.len())
     return prompts.tolist(), doc_ids.tolist()
 
+def _truncate_max_doc_length(document, max_new_tokens):
+
+    model_name = dspy.settings.lm.kwargs["model"]
+    tokenizer = AutoTokenizer.from_pretrained(model_name)
+    
+    max_prompt_len = int(0.975 * MAX_TOKENS.get(model_name, 2048) - max_new_tokens)
+    document = tokenizer.decode(
+        tokenizer(
+            document,
+            truncation=True,
+            max_length=max_prompt_len,
+            add_special_tokens=False,
+        )["input_ids"],
+    )
+    return document
 
 class DocumentToQuery(dspy.Signature):
     """Extract a single relevant query that encompasses the document."""
@@ -171,7 +219,7 @@ class SimpleDocumentToQuery_batching(dspy.Signature):
         return prompt
 
 
-def generate_queries(model_name: str, dataset: str):
+def generate_queries(model_name: str, dataset: str, max_new_tokens: int = 64):
     """Generate queries for a given dataset using a specified model."""
 
     lm = dspy.HFClientVLLM(
@@ -179,7 +227,7 @@ def generate_queries(model_name: str, dataset: str):
         port=MODEL_PORT_MAPPING[model_name],
         url="http://localhost",
         stop=STOP_WORDS,
-        max_tokens=64,
+        max_tokens=max_new_tokens,
         cache=False,
     )
     dspy.configure(lm=lm)
@@ -193,14 +241,24 @@ def generate_queries(model_name: str, dataset: str):
 
     # Prepare dataset
     dataset_path = f"data/{dataset}/queries.jsonl"
-    prompts, doc_ids = prepare_data(
-        dataset_path,
-        # limit=14
-    )
+    prompts, doc_ids = prepare_data(dataset_path, max_new_tokens)
+
 
     # select 10 random prompts from the prompts list
-    prompts = random.sample(prompts, 1000)
+    # prompts = random.sample(prompts, 1000)
 
+    prompts = prompts[2456]  # bad long guy
+    # prompts = prompts[22452] 
+    # print(prompts)
+    # print("Before truncation: ", len(prompts))
+    # prompts = _truncate_max_doc_length(prompts, max_new_tokens)
+    # print("After truncation: ", len(prompts))
+    # print(prompts)
+
+    output = SimpleDocumentToQuery(document=prompts)
+    print(output.query)
+
+    sys.exit()
     # Generate queries
     for strategy_name, predictor in strategies.items():
         batch_prompts = [

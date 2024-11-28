@@ -7,7 +7,7 @@ import getpass
 import argparse
 import subprocess
 
-from config import MODEL_PORT_MAPPING
+from config import MODEL_PORT_MAPPING, MAX_TOKENS
 
 
 def is_server_running(port):
@@ -55,7 +55,7 @@ def serve_model(
     model_name,
     use_scratch_shared_cache=True,
     gpu_memory_utilization=0.975,
-    max_model_len=8192,
+    max_model_len=2048,
     script_path=os.path.abspath(__file__),
 ):
     """Start the model server only if it's not already running."""
@@ -81,15 +81,14 @@ def serve_model(
     port = MODEL_PORT_MAPPING.get(model_name, 8001)
     base_model = shlex.quote(model_name)
 
-    if model_name == "EleutherAI/gpt-j-6B":
-        max_model_len = 2048
+    max_model_length = MAX_TOKENS.get(model_name, max_model_len)
 
     cmd = (
         f"python -m vllm.entrypoints.openai.api_server "
         f"--model {base_model} "
         f"--port {port} "
         f"--gpu-memory-utilization {gpu_memory_utilization} "
-        f"--max-model-len {max_model_len} "
+        f"--max-model-len {max_model_length} "
     )
 
     process = subprocess.Popen(cmd, shell=True, preexec_fn=os.setsid)
@@ -108,7 +107,10 @@ def serve_model(
     signal.signal(signal.SIGTERM, terminate)
 
     try:
-        print(f"Model server started with command: {cmd}")
+        print(
+            f"> Model server started with command: \n" 
+            f"  $ {cmd}\n"
+            )
         process.wait()
     except KeyboardInterrupt:
         terminate(None, None)
