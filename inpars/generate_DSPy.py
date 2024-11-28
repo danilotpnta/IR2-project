@@ -2,12 +2,12 @@ import os
 import sys
 import dspy
 import time
+import random
 import litellm
 import argparse
 import polars as pl
 import pandas as pd
 from tqdm import tqdm
-from serve_model import serve_model
 from config import MODEL_PORT_MAPPING, STOP_WORDS
 from huggingface_hub import list_repo_files, hf_hub_download
 
@@ -40,7 +40,7 @@ def parse_args():
         "--generationLLM",
         choices=[
             "EleutherAI/gpt-j-6B",
-            "meta-llama/Llama-3.1-8B"
+            "meta-llama/Llama-3.1-8B",
             "neuralmagic/Llama-3.1-Nemotron-70B-Instruct-HF-FP8-dynamic",
         ],
         default="meta-llama/Llama-3.1-8B",
@@ -112,28 +112,63 @@ class DocumentToQuery(dspy.Signature):
     )
 
 
+class Prediction:
+    def __init__(self, query: str):
+        self.query = query
+
+    def __repr__(self):
+        return f"Prediction(\n    query='{self.query}'\n)"
+
+
 class SimpleDocumentToQuery:
     """Generate a single relevant query that encompasses the document."""
 
-    def __init__(self, document, lm):
-        """
-        Initialize with a document and a language model client (lm).
-        Automatically generate the query upon instantiation.
-        """
-        self.document = document
-        self.query = self._generate(lm)
+    def __init__(self, document=None):
+        self.lm = dspy.settings.lm
+        assert self.lm is not None, "No LM is loaded."
 
-    def _generate(self, lm):
+        self.document = document
+        self.query = self._generate()
+
+    def _generate(self):
         """
         Generate a query by appending 'Relevant Question:' to the document.
         """
         prompt = f"{self.document}\nRelevant Question:"
-        response = lm(prompt=prompt, use_tqdm=True)
+        response = self.lm(prompt=prompt, use_tqdm=True)
 
         if isinstance(response, list):
             response = response[0]
 
         return response.strip()
+
+    @classmethod
+    def batch(cls, examples):
+        """
+        Handle batch generation from DSPy Examples.
+        """
+        lm = dspy.settings.lm
+        assert lm is not None, "No LM is loaded."
+        documents = [example.document for example in examples]
+        prompts = [f"{doc}\nRelevant Question:" for doc in documents]
+
+        responses = lm(prompts, use_tqdm=True)
+
+        return [Prediction(query=response.strip()) for response in responses]
+
+
+class SimpleDocumentToQuery_batching(dspy.Signature):
+    """Extract a single relevant query that encompasses the document."""
+
+    document = dspy.InputField(desc="The full document text to analyze.")
+    query = dspy.OutputField(
+        desc="A single relevant query ending in '?' that represents the document.",
+    )
+
+    def forward(self, **kwargs):
+        document = kwargs["document"]
+        prompt = f"{document}\nRelevant Question:"
+        return prompt
 
 
 def generate_queries(model_name: str, dataset: str):
@@ -151,29 +186,29 @@ def generate_queries(model_name: str, dataset: str):
 
     # Define strategies
     strategies = {
-        # "Zero-shot": lambda document: SimpleDocumentToQuery(document, lm),
-        "CoT": dspy.ChainOfThought(DocumentToQuery),
+        "Zero-shot": SimpleDocumentToQuery(),
+        # "Zero-shot_dspyPredict": dspy.Predict(SimpleDocumentToQuery_batching),
+        "CoT": dspy.ChainOfThought(DocumentToQuery, use_tqdm=True),
     }
 
     # Prepare dataset
     dataset_path = f"data/{dataset}/queries.jsonl"
-    prompts, doc_ids = prepare_data(dataset_path, 
-                                    # limit=14
-                                    )
+    prompts, doc_ids = prepare_data(
+        dataset_path,
+        # limit=14
+    )
 
-    outputs = dspy.ChainOfThought(DocumentToQuery).batch([dspy.Example(document=p).with_inputs('document') for p in prompts[-10:]])
-    print(outputs)
-    sys.exit()
+    # select 10 random prompts from the prompts list
+    prompts = random.sample(prompts, 1000)
 
-    # Generate queries per Strategy
+    # Generate queries
     for strategy_name, predictor in strategies.items():
-        start_time = time.time()
-        outputs = [
-            predictor(document=prompt)
-            for prompt in tqdm(prompts, desc=f"Processing {strategy_name}")
+        batch_prompts = [
+            dspy.Example(document=p).with_inputs("document") for p in prompts
         ]
-        end_time = time.time()
-
+        outputs = predictor.batch(batch_prompts)
+        # print(f"\n** {strategy_name} **")
+        # print(outputs)
         generations = [(d_id, output.query) for d_id, output in zip(doc_ids, outputs)]
 
         save_path = (
@@ -187,15 +222,11 @@ def generate_queries(model_name: str, dataset: str):
         )
         save.write_ndjson(save_path)
 
-        elapsed_time = end_time - start_time
-        print(f"Strategy {strategy_name} took {elapsed_time:.2f} seconds")
-
 
 def main():
     args = parse_args()
 
     download_queries(args.data_dir)
-    # serve_model(args.generationLLM)
     generate_queries(args.generationLLM, args.dataset)
 
 
