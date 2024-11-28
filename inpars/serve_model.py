@@ -4,6 +4,7 @@ import signal
 import shlex
 import psutil
 import getpass
+import argparse
 import subprocess
 
 from config import MODEL_PORT_MAPPING
@@ -27,24 +28,27 @@ def is_server_running(port):
 
 def stop_model(model_name):
     """Stop the model server running on the specified port."""
-    # TODO: check by calling this method from another script stops the server
 
     port = MODEL_PORT_MAPPING.get(model_name, 8000)
     for proc in psutil.process_iter(["pid", "cmdline"]):
         try:
-            cmdline = " ".join(proc.info["cmdline"])
-            if (
-                f"--port {port}" in cmdline
-                and "vllm.entrypoints.openai.api_server" in cmdline
-            ):
-                print(f"Stopping server for '{model_name}' running on port {port}.")
-                proc.terminate()
-                proc.wait(timeout=5)  #
-                print(f"Server for '{model_name}' has been stopped.")
-                return
+            cmdline = proc.info["cmdline"]
+            if cmdline and isinstance(cmdline, list):
+                cmdline_str = " ".join(cmdline)
+                if (
+                    f"--port {port}" in cmdline_str
+                    and "vllm.entrypoints.openai.api_server" in cmdline_str
+                ):
+                    print(
+                        f"> Stopping server for '{model_name}' running on port {port}."
+                    )
+                    proc.terminate()
+                    proc.wait(timeout=5)  #
+                    print(f"> Server for '{model_name}' has been stopped.")
+                    return
         except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.TimeoutExpired):
             continue
-    print(f"No server for '{model_name}' is running on port {port}.")
+    print(f"> No server for '{model_name}' is running on port {port}.")
 
 
 def serve_model(
@@ -52,8 +56,18 @@ def serve_model(
     use_scratch_shared_cache=True,
     gpu_memory_utilization=0.975,
     max_model_len=8192,
+    script_path=os.path.abspath(__file__),
 ):
     """Start the model server only if it's not already running."""
+
+    for model, port in MODEL_PORT_MAPPING.items():
+        if is_server_running(port):
+            print(f"> Model server for '{model}' is running on port {port}.")
+            print(
+                f"> To stop the server, run: \n" 
+                f"  $ python {script_path} --stop_model '{model}'"
+                )
+            return
 
     if use_scratch_shared_cache:
 
@@ -62,14 +76,13 @@ def serve_model(
         os.makedirs(hf_cache_dir, exist_ok=True)
 
         os.environ["HF_HOME"] = hf_cache_dir
-        print(f"HF_HOME set to {hf_cache_dir}")
+        print(f"> HF_HOME set to {hf_cache_dir}")
 
     port = MODEL_PORT_MAPPING.get(model_name, 8001)
     base_model = shlex.quote(model_name)
 
-    if is_server_running(port):
-        print(f"Model server for '{model_name}' is already running on port {port}.")
-        return
+    if model_name == "EleutherAI/gpt-j-6B":
+        max_model_len = 2048
 
     cmd = (
         f"python -m vllm.entrypoints.openai.api_server "
@@ -101,6 +114,35 @@ def serve_model(
         terminate(None, None)
 
 
+def parse_args():
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--stop_model",
+        help="Stop the specified model server by name.",
+        type=str,
+        required=False,
+    )
+    parser.add_argument(
+        "--model_name",
+        help="Start the specified model server by name.",
+        type=str,
+        default="meta-llama/Llama-3.1-8B",
+        choices=[
+            "EleutherAI/gpt-j-6B",
+            "meta-llama/Llama-3.1-8B",
+            "neuralmagic/Llama-3.1-Nemotron-70B-Instruct-HF-FP8-dynamic",
+        ],
+    )
+
+    args = parser.parse_args()
+
+    return args
+
+
 if __name__ == "__main__":
-    model_name = "meta-llama/Llama-3.1-8B"
-    serve_model(model_name)
+    args = parse_args()
+
+    if args.stop_model:
+        stop_model(args.stop_model)
+    else:
+        serve_model(args.model_name)
