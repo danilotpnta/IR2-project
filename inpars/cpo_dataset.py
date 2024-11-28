@@ -357,7 +357,7 @@ def build_cpo_dataset(
         logger.info(f"Loaded document texts and saved dataset to {output_path}")
 
     # Step 4,5: Generate the prompts
-    if not has_prompts and False:
+    if not has_prompts:
         # prompt builder args (with DynamicPromptV2)
         prompt = Prompt.load(
             name=prompt_template_name,
@@ -405,7 +405,7 @@ def build_cpo_dataset(
         logger.info(f"Generated prompts and saved dataset to {output_path}")
 
     # generate teacher queries
-    if not has_teacher_queries and False:
+    if not has_teacher_queries:
         if use_vllm:
             from . import vllm_inference
 
@@ -433,7 +433,7 @@ def build_cpo_dataset(
         logger.info(f"Generated teacher queries and saved dataset to {output_path}")
 
     # generate student queries
-    if not has_student_queries and False:
+    if not has_student_queries:
         if use_vllm:
             from . import vllm_inference
 
@@ -493,7 +493,7 @@ def build_cpo_dataset(
         logger.info(f"Generated reference scores and saved dataset to {output_path}")
 
     # obtain teacher scores
-    if not has_teacher_scores and False:
+    if not has_teacher_scores:
         teacher_doc_query_pairs = {
             doc_id: data["teacher_query"] for doc_id, data in output["data"].items()
         }
@@ -508,7 +508,7 @@ def build_cpo_dataset(
         logger.info(f"Generated teacher scores and saved dataset to {output_path}")
 
     # obtain student scores
-    if not has_student_scores and False:
+    if not has_student_scores:
         student_doc_query_pairs = {
             doc_id: data["student_query"] for doc_id, data in output["data"].items()
         }
