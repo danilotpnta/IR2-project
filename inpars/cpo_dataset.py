@@ -320,7 +320,7 @@ def build_cpo_dataset(
                 "doc_id": d_ids,
                 "doc_text": d_texts,
             }
-        )
+        ).drop_duplicates(subset="doc_id")
 
         dataset.to_csv(dataset_path, index=False)
         logger.info(f"Saved combined dataset to {dataset_path}")
@@ -339,8 +339,8 @@ def build_cpo_dataset(
     # load the dataset
     if not has_docs_queries:
         # sample num_samples document-query pairs from the dataframe
-        samples = dataset.sample(num_samples, random_state=seed).drop_duplicates(
-            subset="doc_id"
+        samples = dataset.sample(
+            num_samples, replace=False, random_state=seed
         )  # .dropna()
 
         output["doc_ids"] = samples["doc_id"].tolist()
@@ -371,6 +371,7 @@ def build_cpo_dataset(
             max_query_length=max_query_length,
             max_prompt_length=max_prompt_length,
             max_new_token=max_new_token,
+            deterministic=True
         )
 
         # load tokenizer NOTE: this only works if the student and the teacher have the same tokenizer
@@ -411,7 +412,11 @@ def build_cpo_dataset(
 
             prompts = [data["prompt"] for data in output["data"].values()]
             teacher_queries = vllm_inference.generate_queries(
-                prompts, output["doc_ids"], teacher_model, output_dir
+                prompts,
+                output["doc_ids"],
+                teacher_model,
+                output_dir,
+                max_prompt_length=max_prompt_length,
             )
         else:
             # load model and tokenizer
@@ -439,7 +444,11 @@ def build_cpo_dataset(
 
             prompts = [data["prompt"] for data in output["data"].values()]
             student_queries = vllm_inference.generate_queries(
-                prompts, output["doc_ids"], model_name, output_dir
+                prompts,
+                output["doc_ids"],
+                model_name,
+                output_dir,
+                max_prompt_length=max_prompt_length,
             )
         else:
             # load model and tokenizer
@@ -451,7 +460,7 @@ def build_cpo_dataset(
             # TODO: Not complete yet
             student_queries = generate_queries(student_model, student_tokenizer, output)
 
-        for doc_id, query in teacher_queries.items():
+        for doc_id, query in student_queries.items():
             text, logprobs, cumlogprob = query
             output["data"][doc_id]["student_query"] = text
 
@@ -548,10 +557,10 @@ if __name__ == "__main__":
     parser.add_argument("--dataset_name", type=str, default="msmarco-document/train")
     parser.add_argument("--num_examples", type=int, default=2)
     parser.add_argument("--seed", type=int, default=42)
-    parser.add_argument("--max_doc_length", type=int, default=512)
+    parser.add_argument("--max_doc_length", type=int, default=1024)
     parser.add_argument("--max_query_length", type=int, default=64)
     parser.add_argument("--max_prompt_length", type=int, default=8192)
-    parser.add_argument("--max_new_token", type=int, default=16)
+    parser.add_argument("--max_new_token", type=int, default=32)
     parser.add_argument("--use_vllm", action="store_true")
     args = parser.parse_args()
 

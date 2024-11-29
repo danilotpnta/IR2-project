@@ -20,6 +20,7 @@ class Prompt:
         max_query_length=None,
         max_prompt_length=None,
         max_new_token=16,
+        deterministic=False
     ):
         self.template = template
         self.examples = examples
@@ -30,6 +31,7 @@ class Prompt:
         self.max_prompt_length_words = int(max_prompt_length) * 2 / 3  # magic number
         self.n_generated_queries = n_generated_queries
         self.max_new_token = max_new_token
+        self.deterministic = deterministic
 
     @classmethod
     def load(cls, name: str, dataset: str = None, *args, **kwargs):
@@ -57,17 +59,21 @@ class Prompt:
             document = self.tokenizer.decode(
                 self.tokenizer(
                     document, truncation=True, max_length=self.max_doc_length
-                )["input_ids"]
+                )["input_ids"], skip_special_tokens=True
             )
         return document
 
+    def _truncate_max_query_length(self, query):
+        if self.max_query_length:
+            query = self.tokenizer.decode(
+                self.tokenizer(
+                    query, truncation=True, max_length=self.max_query_length
+                )["input_ids"], skip_special_tokens=True
+            )
+        return query
 
-class StaticPrompt(Prompt):
-    def build(self, document, *args, **kwargs):
-        document = self._truncate_max_doc_length(document)
 
-        prompt = self.template.format(document=document, query="").rstrip()
-
+    def check_max_prompt_length(self, prompt):
         if self.max_prompt_length:
             prompt_length = len(self.tokenizer.tokenize(prompt))
             if prompt_length + self.max_new_token > self.max_prompt_length:
@@ -76,12 +82,23 @@ class StaticPrompt(Prompt):
                      max length: {self.max_prompt_length})"
                 )
 
+
+class StaticPrompt(Prompt):
+    def build(self, document, *args, **kwargs):
+        document = self._truncate_max_doc_length(document)
+
+        prompt = self.template.format(document=document, query="").rstrip()
+
+        self.check_max_prompt_length(prompt)
         return prompt
 
 
 class DynamicPrompt(Prompt):
     def build(self, document, n_examples=3):
-        random_examples = random.sample(self.examples, n_examples)
+        if self.deterministic:
+            random_examples = random.sample(self.examples, n_examples)
+        else:
+            random_examples = self.examples[:n_examples]
 
         prompt = ""
         for i in range(n_examples):
@@ -92,37 +109,20 @@ class DynamicPrompt(Prompt):
             prompt += self.template.format(document=doc, query=query)
 
         document = ftfy.fix_text(document)
-        if self.max_doc_length:
-            document = self.tokenizer.decode(
-                self.tokenizer(
-                    document, truncation=True, max_length=self.max_doc_length
-                )["input_ids"]
-            )
+        document = self._truncate_max_doc_length(document)
 
         prompt += self.template.format(document=document, query="").rstrip()
 
-        if self.max_prompt_length:
-            prompt_length = len(self.tokenizer.tokenize(prompt))
-            if prompt_length + self.max_new_token > self.max_prompt_length:
-                raise Exception(
-                    f"Overflowing prompt (prompt length: {prompt_length} + {self.max_new_token}, \
-                     max length: {self.max_prompt_length})"
-                )
-
+        self.check_max_prompt_length(prompt)
         return prompt
-
-    def _truncate_max_query_length(self, query):
-        if self.max_query_length:
-            query = self.tokenizer.decode(
-                self.tokenizer(
-                    query, truncation=True, max_length=self.max_query_length
-                )["input_ids"]
-            )
-        return query
 
 class DynamicPromptV2(Prompt):
     def build(self, document, n_examples=3, **dataset_stats) -> str:
-        random_examples = random.sample(self.examples, n_examples)
+        if self.deterministic:
+            random_examples = self.examples[:n_examples]
+        else:
+            random_examples = random.sample(self.examples, n_examples)
+
         # Dataset_Stats is a dictionary with the following schema:
         # {
         #     "Dataset": str,
@@ -177,33 +177,12 @@ class DynamicPromptV2(Prompt):
                 prompt += template.format(document=doc.strip(), query=query) + "\n\n"
 
         document = ftfy.fix_text(document)
-        if self.max_doc_length:
-            document = self.tokenizer.decode(
-                self.tokenizer(
-                    document, truncation=True, max_length=self.max_doc_length
-                )["input_ids"]
-            )
+        document = self._truncate_max_doc_length(document)
 
         if self.n_generated_queries > 1:
             prompt += f"{context.format(document=document.strip())}\n{query_str}".rstrip()
         else:
             prompt += template.format(document=document.strip(), query="").rstrip()
 
-        if self.max_prompt_length:
-            prompt_length = len(self.tokenizer.tokenize(prompt))
-            if prompt_length + self.max_new_token > self.max_prompt_length:
-                raise Exception(
-                    f"Overflowing prompt (prompt length: {prompt_length} + {self.max_new_token}, \
-                     max length: {self.max_prompt_length})"
-                )
-
+        self.check_max_prompt_length(prompt)
         return prompt
-
-    def _truncate_max_query_length(self, query):
-        if self.max_query_length:
-            query = self.tokenizer.decode(
-                self.tokenizer(
-                    query, truncation=True, max_length=self.max_query_length
-                )["input_ids"]
-            )
-        return query

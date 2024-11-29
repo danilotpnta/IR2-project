@@ -6,21 +6,24 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 from vllm import LLM, SamplingParams
 
-GPUS_AVAILABLE = int(os.environ["GPU_COUNT"])
+GPUS_AVAILABLE = int(os.environ.get("GPU_COUNT", 1))
+SEED = int(os.environ.get("SEED", 42))
 
+logger = logging.getLogger()
 
 def generate_queries(
     prompts: list[str],
     doc_ids: list[str],
     model_name="neuralmagic/Llama-3.1-Nemotron-70B-Instruct-HF-FP8-dynamic",
     save_folder="cache",
-    batch_size=512,
+    max_prompt_length=8192,
+    batch_size=256,
     use_tqdm_inner=True,
     top_k=500,
     top_p=0.9,
     temperature=0.8,
     max_tokens=256,
-    logprobs=3,
+    logprobs=None,
     stop=["\n", "Example", "Document:"],
     **kwargs,
 ):
@@ -31,8 +34,9 @@ def generate_queries(
     try:
         with open(save_file, "r") as f:
             generations = json.load(f)
-        logging.info(f"Found {len(generations)} saved generations.")
-    except:
+        logger.info(f"Found {len(generations)} saved generations.")
+    except Exception:
+        logger.info("No generated queries were recovered.")
         generations = {}
 
     # Create a sampling params object.
@@ -50,13 +54,16 @@ def generate_queries(
     llm = LLM(
         model=model_name,
         enable_prefix_caching=True,
-        seed=42,
-        gpu_memory_utilization=0.975,
-        max_model_len=8192,
+        seed=SEED,
+        gpu_memory_utilization=0.95,
+        max_model_len=max_prompt_length,
         enable_chunked_prefill=True,
         dtype="auto",
         tensor_parallel_size=GPUS_AVAILABLE,
+        max_num_batched_tokens=max_prompt_length
     )
+    
+    # llm.llm_engine.use_cached_outputs = True
 
     loader_docid = DataLoader(doc_ids[len(generations) :], batch_size=batch_size)
     loader_prompts = DataLoader(prompts[len(generations) :], batch_size=batch_size)
@@ -74,7 +81,7 @@ def generate_queries(
         generations |= {
             d_id: (
                 output.outputs[0].text,
-                repr(output.outputs[0].logprobs), # this is hard to show generally
+                repr(output.outputs[0].logprobs), # this is a bit hard to serialize trivially
                 output.outputs[0].cumulative_logprob,
             )
             for d_id, output in zip(d_ids, outputs)
