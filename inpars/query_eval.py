@@ -189,7 +189,9 @@ class QueryEval(torch.nn.Module):
             for q, d in zip(queries, doc_indices):
                 bm25: BM25 = self.bm25
                 # compute raw bm25 scores for all the documents in the corpus
-                alldocs = torch.tensor(bm25.get_scores(q.split()))
+                q = q.split()
+                q = q if q else [""]
+                alldocs = torch.tensor(bm25.get_scores(q))
                 # send to device
                 alldocs = alldocs.to(self.device).squeeze()
                 # normalise to get "probabilities"
