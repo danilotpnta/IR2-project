@@ -286,3 +286,5 @@ xxhash==3.5.0
 yarl==1.17.1
 zipp==3.21.0
 zlib-state==0.1.9
+matplotlib
+seaborn

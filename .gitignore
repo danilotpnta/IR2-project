@@ -176,4 +176,5 @@ bin/
 # logs from the jobs
 logs/
 
-data/
+data/*
+!data/stats/
