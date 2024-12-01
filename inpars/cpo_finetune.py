@@ -29,10 +29,19 @@ class ModelArguments:
     model_name_or_path: str = field(
         metadata={"help": "Path to pretrained model or model identifier from huggingface.co/models"}
     )
+    use_wandb: bool = field(
+        default=False,
+        metadata={"help": "Use wandb for logging"}
+    )
 
     def __post_init__(self):
         self.config = AutoConfig.from_pretrained(self.model_name_or_path)
         self.tokenizer = AutoTokenizer.from_pretrained(self.model_name_or_path)
+        if self.use_wandb:
+            self.wandb_api_key = os.getenv("WANDB_API_KEY")
+            if self.wandb_api_key is None:
+                raise ValueError("WANDB_API_KEY is not set")
+
 
 
 class SavePeftModelCallback(TrainerCallback):
@@ -70,6 +79,16 @@ def train(
     ):
     # set seed
     set_seed(cpo_config.seed)
+    # init wandb
+    if model_args.use_wandb:
+        import wandb
+        wandb.login(key=model_args.wandb_api_key)
+        wandb.init(project="cpo_finetune")
+        wandb.config.update(model_args)
+        wandb.config.update(data_config)
+        wandb.config.update(cpo_config)
+        wandb.config.update(peft_config)
+        cpo_config.report_to = "wandb"
 
     # load dataset
     # with fieds ["doc_id", "text"] (would be nice to have some gt queries as well.)
@@ -84,7 +103,7 @@ def train(
         peft_config=peft_confg,
         args=cpo_config,
         train_dataset=dataset,
-        callbacks=[SavePeftModelCallback],
+        callbacks=[SavePeftModelCallback]
     )
     # train
     trainer.train()
