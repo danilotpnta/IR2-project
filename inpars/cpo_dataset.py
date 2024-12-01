@@ -25,11 +25,11 @@ logger = logging.getLogger(__name__)
 @dataclass
 class DataConfig:
     cpo_data_path: Dict[str, str]
-    max_train_samples: Optional[int]
-    max_source_length: int
-    preprocessing_num_workers: int
-    overwrite_cache: bool
-    streaming: bool
+    max_train_samples: Optional[int] = None
+    max_source_length: int = 8192
+    preprocessing_num_workers: int = 4
+    overwrite_cache: bool = True
+    streaming: bool = False
 
 def load_cpo_dataset(data_args: DataConfig, train_args: CPOConfig, tokenizer):
     """
@@ -61,9 +61,8 @@ def load_cpo_dataset(data_args: DataConfig, train_args: CPOConfig, tokenizer):
         return highest_score_sentence, lowest_score_sentence
 
     def meet_requirements(prompt_tok):
-        # if prompt is too long
-        if len(prompt_tok) > data_args.max_source_length:
-            return False
+        # TODO: enforce properties about the prompt.
+        # should be fine since we already generated the prompt
         return True
 
     def cpo_prompt_function(examples):

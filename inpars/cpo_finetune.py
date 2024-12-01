@@ -1,15 +1,10 @@
 import os
 import sys
-import numpy as np
+import json
 import logging
 import torch
-import json
-from pathlib import Path
-from functools import partial
-from datasets import load_dataset, load_cpo_dataset
 from dataclasses import dataclass, field
-from peft.config import PeftConfig
-from peft.peft_model import PeftModel
+from peft import PeftConfig
 from transformers import (
     AutoTokenizer,
     AutoModelForCausalLM,
@@ -18,7 +13,6 @@ from transformers import (
     HfArgumentParser,
     set_seed
 )
-import dspy
 
 from ALMA.utils.cpo_trainer import CPOTrainer
 from ALMA.utils.cpo_config import CPOConfig
@@ -32,6 +26,10 @@ class ModelArguments:
     use_wandb: bool = field(
         default=False,
         metadata={"help": "Use wandb for logging"}
+    )
+    peft_config_path: str = field(
+        default=None,
+        metadata={"help": "Path to peft config file"}
     )
 
     def __post_init__(self):
@@ -92,7 +90,10 @@ def train(
 
     # load dataset
     # with fieds ["doc_id", "text"] (would be nice to have some gt queries as well.)
-    dataset = load_cpo_dataset(data_config, cpo_config, model_args.tokenizer)
+    # dataset = load_cpo_dataset(data_config, cpo_config, model_args.tokenizer)
+
+    # avoid passive-agressive warning message
+    cpo_config.remove_unused_columns = False
 
     # load model
     model = AutoModelForCausalLM.from_pretrained(model_args.model_name_or_path)
@@ -100,9 +101,10 @@ def train(
     # TODO: prepare trainer
     trainer = CPOTrainer(
         model=model,
-        peft_config=peft_confg,
+        tokenizer=model_args.tokenizer,
+        peft_config=peft_config,
         args=cpo_config,
-        train_dataset=dataset,
+        train_dataset=None,
         callbacks=[SavePeftModelCallback]
     )
     # train
@@ -113,15 +115,18 @@ def train(
 logger = logging.getLogger(__name__)
 
 if __name__ == "__main__":
-    parser = HfArgumentParser((ModelArguments, CPOConfig, PeftConfig, DataConfig))
+    parser = HfArgumentParser((ModelArguments, CPOConfig, DataConfig))
     if len(sys.argv) == 2 and sys.argv[1].endswith(".json"):
         # If we pass only one argument to the script and it's the path to a json file,
         # let's parse it to get our arguments.
         # NOTE: stole it from ALMA/run_cpo_llmmt.py
-        model_args, training_config, peft_confg, data_config = parser.parse_json_file(
+        model_args, training_config, data_config = parser.parse_json_file(
             json_file=os.path.abspath(sys.argv[1]))
     else:
-        model_args, training_config, peft_confg, data_config = parser.parse_args_into_dataclasses()
+        model_args, training_config, data_config = parser.parse_args_into_dataclasses()
+
+    with open(model_args.peft_config_path) as f:
+        peft_config = PeftConfig.from_peft_type(**json.load(f))
 
     # logging
     logging.basicConfig(level=logging.INFO)
@@ -130,5 +135,5 @@ if __name__ == "__main__":
         model_args=model_args,
         data_config=data_config,
         cpo_config=training_config,
-        peft_config=peft_confg
+        peft_config=peft_config
     )

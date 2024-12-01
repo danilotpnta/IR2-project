@@ -1,0 +1,17 @@
+{
+    "model_name_or_path": "neuralmagic/Meta-Llama-3.1-8B-Instruct-FP8",
+    "use_wandb": false,
+    "cpo_data_path": {
+        "msmarco-dataset/train": "/scratch-shared/scur2850/cpo_dataset/llmt_preference_Meta-Llama-3.1-8B-Instruct-FP8_msmarco-document-train_100.json"
+    },
+    "output_dir": "/scratch-shared/scur2850/cpo_output/model",
+    "max_source_length": 8192,
+    "preprocessing_num_workers": 64,
+    "overwrite_cache": true,
+    "streaming": true,
+    "max_length": 8192,
+    "max_prompt_length": 4096,
+    "beta": 0.1,
+    "cpo_alpha": 1.0,
+    "peft_config_path": "config/peft_config.json"
+}
