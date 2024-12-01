@@ -107,7 +107,6 @@ def load_cpo_dataset(data_args: DataConfig, train_args: CPOConfig, tokenizer):
                             batched=True,
                             batch_size=1,
                             num_proc=data_args.preprocessing_num_workers,
-                            remove_columns=["translation"],
                             load_from_cache_file=not data_args.overwrite_cache,
                             desc="Running CPO preprocessing",
                         )
@@ -116,7 +115,6 @@ def load_cpo_dataset(data_args: DataConfig, train_args: CPOConfig, tokenizer):
                             cpo_prompt_function,
                             batched=True,
                             batch_size=1,
-                            remove_columns=["translation"],
                         )
                 processed_datasets.append(train_dataset)
 
