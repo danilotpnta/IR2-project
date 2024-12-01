@@ -10,6 +10,9 @@ import pandas as pd
 from tqdm import tqdm
 from tqdm.contrib.concurrent import process_map
 from transformers import AutoModel, AutoTokenizer
+from trl import CPOConfig
+from datasets import concatenate_datasets, Dataset, DatasetInfo
+from dataclasses import dataclass
 
 from inpars.utils import _process_map_p
 
@@ -19,13 +22,109 @@ from .utils import _process_map_d, _process_map_q
 
 logger = logging.getLogger(__name__)
 
+@dataclass
+class DataConfig:
+    cpo_data_path: Dict[str, str]
+    max_train_samples: Optional[int]
+    max_source_length: int
+    preprocessing_num_workers: int
+    overwrite_cache: bool
+    streaming: bool
 
-def load_cpo_dataset(source_path: Path):
+def load_cpo_dataset(data_args: DataConfig, train_args: CPOConfig, tokenizer):
     """
     Implementation adapted from
     https://github.com/fe1ixxu/ALMA/blob/master/utils/utils.py :: `preprocess_cpo_data`
     """
-    pass
+    def get_chosen_reject(example):
+        teacher_score_key = "teacher_score"
+        student_score_key = "student_score"
+        ref_score_key = "ref_score"
+
+        teacher_output_key = "teacher_query"
+        student_output_key = "student_query"
+        ref_output_key = "ref_query"
+
+        # Defining the sentences and their scores
+        sentences = [example[ref_output_key],
+                     example[teacher_output_key], example[student_output_key]]
+        scores = [example[ref_score_key],
+                  example[teacher_score_key], example[student_score_key]]
+
+        # Finding the indexes for the highest and lowest scores
+        highest_score_index = scores.index(max(scores))
+        lowest_score_index = scores.index(min(scores))
+
+        # Assigning the corresponding sentences
+        highest_score_sentence = sentences[highest_score_index]
+        lowest_score_sentence = sentences[lowest_score_index]
+        return highest_score_sentence, lowest_score_sentence
+
+    def meet_requirements(prompt_tok):
+        # if prompt is too long
+        if len(prompt_tok) > data_args.max_source_length:
+            return False
+        return True
+
+    def cpo_prompt_function(examples):
+        new_examples = {
+            "prompt": [],
+            "chosen": [],
+            "rejected": [],
+        }
+        for ex in examples.values():
+            prompt = ex["prompt"]
+            prompt_tok = tokenizer(
+                prompt, max_length=data_args.max_source_length, padding=True, truncation=True
+            ).input_ids
+            chosen, rejected = get_chosen_reject(ex)
+            if meet_requirements(prompt_tok):
+                new_examples["prompt"].append(prompt)
+                new_examples["chosen"].append(chosen)
+                new_examples["rejected"].append(rejected)
+        return new_examples
+
+    # Preprocessing the datasets.
+    # NOTE: eval_datasets and test_datasets are not used in the current implementation
+    # also note: this is also how the ALMA implementation is done
+    train_datasets, eval_datasets, test_datasets = None, None, None
+    if train_args.do_train:
+        processed_datasets = []
+        if data_args.cpo_data_path:
+            for dataset_name, path in data_args.cpo_data_path.items():
+                with open(path, "r") as f:
+                    train_dataset = json.load(f)["data"]
+                    train_dataset = Dataset.from_dict(
+                        train_dataset, info=DatasetInfo(dataset_name=dataset_name))
+                if data_args.max_train_samples is not None:
+                    max_train_samples = min(
+                        len(train_dataset), data_args.max_train_samples)
+                    train_dataset = train_dataset.select(
+                        range(max_train_samples))
+                with train_args.main_process_first(desc=f"CPO train {dataset_name} map pre-processing"):
+                    if not data_args.streaming:
+                        train_dataset = train_dataset.map(
+                            cpo_prompt_function,
+                            batched=True,
+                            batch_size=1,
+                            num_proc=data_args.preprocessing_num_workers,
+                            remove_columns=["translation"],
+                            load_from_cache_file=not data_args.overwrite_cache,
+                            desc="Running CPO preprocessing",
+                        )
+                    else:
+                        train_dataset = train_dataset.map(
+                            cpo_prompt_function,
+                            batched=True,
+                            batch_size=1,
+                            remove_columns=["translation"],
+                        )
+                processed_datasets.append(train_dataset)
+
+        train_datasets = concatenate_datasets(processed_datasets)
+        train_datasets = train_datasets.shuffle(seed=train_args.seed)
+
+    return train_datasets, eval_datasets, test_datasets
 
 
 def continue_from_checkpoint(

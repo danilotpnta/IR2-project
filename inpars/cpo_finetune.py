@@ -1,20 +1,20 @@
 import os
+import sys
 import numpy as np
+import logging
 import torch
 import json
 from pathlib import Path
 from functools import partial
-from datasets import load_dataset, load_llmt_dataset
+from datasets import load_dataset, load_cpo_dataset
 from dataclasses import dataclass, field
 from peft.config import PeftConfig
 from peft.peft_model import PeftModel
 from transformers import (
-    TrainingArguments,
-    Trainer,
     AutoTokenizer,
     AutoModelForCausalLM,
     AutoConfig,
-    DataCollatorWithPadding,
+    TrainerCallback,
     HfArgumentParser,
     set_seed
 )
@@ -22,88 +22,94 @@ import dspy
 
 from ALMA.utils.cpo_trainer import CPOTrainer
 from ALMA.utils.cpo_config import CPOConfig
-from inpars.cpo_dataset import load_llmt_dataset
+from inpars.cpo_dataset import load_cpo_dataset, DataConfig
 
 @dataclass
-class ExtraArguments:
-    model: str = field(
-        metadata={"help": "Model to fine-tune."},
-    )
-    save_dir: Path = field(
-        metadata={"help": """
-                  Directory to save model checkpoints and metadata to.
-                    The following will be written:
-                    - checkpoints/<model_name>_<step_num>.pt
-                    - checkpoints/<model_name>_latest.pt
-                    - train_samples.json
-                  """},
-    )
-    use_peft: bool = field(
-        metadata={"help": "Use PEFT for training."},
-    )
-    use_dspy: bool = field(
-        metadata={"help": "Use DSPy for training."},
-    )
-    model_checkpoint: str = field(
-        metadata={"help": "Path to checkpoint to load from."},
-    )
-
-    teacher_queries_path: str = field(
-        metadata={"help": "Path to teacher queries. Expecting JSON format."},
-    )
-    dataset_name: str = field(
-        default="msmarco-document",
-        metadata={"help": "Dataset name."},
-    )
-    dataset_location: str = field(
-        metadata={"help": "Dataset location."},
-    )
-
-    max_doc_length: int = field(
-        metadata={"help": "Maximum document length."},
+class ModelArguments:
+    model_name_or_path: str = field(
+        metadata={"help": "Path to pretrained model or model identifier from huggingface.co/models"}
     )
 
     def __post_init__(self):
-        if not self.save_dir.exists():
-            raise ValueError(f"Save directory {self.save_dir} does not exist.")
-        self.save_dir.mkdir(parents=True, exist_ok=True)
+        self.config = AutoConfig.from_pretrained(self.model_name_or_path)
+        self.tokenizer = AutoTokenizer.from_pretrained(self.model_name_or_path)
 
-def peft_finetune(args: ExtraArguments, 
-                  cpo_config: CPOConfig,
-                  peft_config: PeftConfig):
-    # load model from checkpoint if provided
-    if args.checkpoint and os.path.exists(args.checkpoint):
-        PeftModel.from_pretrained(args.model_checkpoint)
-    else:
-        model = AutoModelForCausalLM.from_pretrained(
-            model, # TODO: **model_kwargs
+
+class SavePeftModelCallback(TrainerCallback):
+    """
+    Copy-paste from ALMA/utils/utils.py
+    """
+    def on_save(
+        self,
+        args,
+        state,
+        control,
+        **kwargs,
+    ):
+        checkpoint_folder = os.path.join(
+            args.output_dir, f"checkpoint-{state.global_step}"
         )
-        model = PeftModel(model, peft_config)
 
-    # load tokenizer
-    tokenizer = AutoTokenizer.from_pretrained(args.model)
+        peft_model_path = os.path.join(checkpoint_folder, "adapter_model")
+        kwargs["model"].save_pretrained(peft_model_path)
+
+        pytorch_model_path = os.path.join(
+            checkpoint_folder, "pytorch_model.bin")
+
+        if os.path.isfile(pytorch_model_path) and torch.distributed.get_rank() == 0:
+            os.remove(pytorch_model_path)
+            # create an empty toy file to avoid error in deleting old checkpoints
+            open(pytorch_model_path, 'w').close()
+        return control
+
+def train(
+    model_args: ModelArguments,
+    data_config: DataConfig, 
+    cpo_config: CPOConfig,
+    peft_config: PeftConfig
+    ):
+    # set seed
+    set_seed(cpo_config.seed)
 
     # load dataset
     # with fieds ["doc_id", "text"] (would be nice to have some gt queries as well.)
-    dataset = load_llmt_dataset(args.dataset_location, args.dataset_name)
+    dataset = load_cpo_dataset(data_config, cpo_config, model_args.tokenizer)
 
-    # prepare data collator
+    # load model
+    model = AutoModelForCausalLM.from_pretrained(model_args.model_name_or_path)
 
     # TODO: prepare trainer
-
+    trainer = CPOTrainer(
+        model=model,
+        peft_config=peft_confg,
+        args=cpo_config,
+        train_dataset=dataset,
+        callbacks=[SavePeftModelCallback],
+    )
     # train
-
+    trainer.train()
     # save model
+    trainer.save_model()
 
-    # save metadata
+logger = logging.getLogger(__name__)
 
-@dataclass
-class DSPyConfig:
-    # TODO
-    pass
+if __name__ == "__main__":
+    parser = HfArgumentParser((ModelArguments, CPOConfig, PeftConfig, DataConfig))
+    if len(sys.argv) == 2 and sys.argv[1].endswith(".json"):
+        # If we pass only one argument to the script and it's the path to a json file,
+        # let's parse it to get our arguments.
+        # NOTE: stole it from ALMA/run_cpo_llmmt.py
+        model_args, training_config, peft_confg, data_config = parser.parse_json_file(
+            json_file=os.path.abspath(sys.argv[1]))
+    else:
+        model_args, training_config, peft_confg, data_config = parser.parse_args_into_dataclasses()
 
+    # logging
+    logging.basicConfig(level=logging.INFO)
 
-def dspy_finetune(args: ExtraArguments,
-                  dspy_config: DSPyConfig):
-    # TODO
-    pass
+    train(
+        model_args=model_args,
+        data_config=data_config,
+        cpo_config=training_config,
+        peft_config=peft_confg
+    )
