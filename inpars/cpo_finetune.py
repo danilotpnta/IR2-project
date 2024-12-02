@@ -39,6 +39,13 @@ class ModelArguments:
         self.tokenizer = AutoTokenizer.from_pretrained(self.model_name_or_path)
         if self.tokenizer.pad_token_id is None:
             self.tokenizer.add_special_tokens({'pad_token': '[PAD]'})
+            self.tokenizer.pad_token = self.tokenizer.eos_token
+            self.tokenizer.pad_token_id = self.tokenizer.eos_token_id
+            
+            # To change the embedding matrix directly
+            # self.tokenizer.pad_token_id = self.tokenizer.vocab_size + 1
+            
+
         if self.use_wandb:
             self.wandb_api_key = os.getenv("WANDB_API_KEY")
             if self.wandb_api_key is None:
@@ -103,6 +110,12 @@ def train(
     model = AutoModelForCausalLM.from_pretrained(
         model_args.model_name_or_path, **model_args.model_kwargs)
 
+    model.config.pad_token_id = model_args.tokenizer.pad_token_id
+    
+    # To modify the embedding matrix directly
+    # input_embed = model.get_input_embeddings()
+    # input_embed.weight = torch.nn.Parameter(torch.cat([input_embed.weight, torch.zeros(1, model_args.config.hidden_size).to(input_embed.weight)], dim=0))
+    # input_embed.padding_idx = model_args.tokenizer.pad_token_id
 
     # TODO: prepare trainer
     trainer = CPOTrainer(
