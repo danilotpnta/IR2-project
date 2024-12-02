@@ -65,22 +65,22 @@ def load_cpo_dataset(data_args: DataConfig, train_args: CPOConfig, tokenizer):
         # should be fine since we already generated the prompt
         return True
 
-    def cpo_prompt_function(examples):
+    def cpo_prompt_function(example):
         new_examples = {
             "prompt": [],
             "chosen": [],
             "rejected": [],
         }
-        for ex in examples.values():
-            prompt = ex["prompt"]
-            prompt_tok = tokenizer(
-                prompt, max_length=data_args.max_source_length, padding=True, truncation=True
-            ).input_ids
-            chosen, rejected = get_chosen_reject(ex)
-            if meet_requirements(prompt_tok):
-                new_examples["prompt"].append(prompt)
-                new_examples["chosen"].append(chosen)
-                new_examples["rejected"].append(rejected)
+
+        prompt = example["prompt"]
+        prompt_tok = tokenizer(
+            prompt, max_length=data_args.max_source_length, padding=True, truncation=True
+        ).input_ids
+        chosen, rejected = get_chosen_reject(example)
+        if meet_requirements(prompt_tok):
+            new_examples["prompt"].append(prompt)
+            new_examples["chosen"].append(chosen)
+            new_examples["rejected"].append(rejected)
         return new_examples
 
     # Preprocessing the datasets.
@@ -93,8 +93,8 @@ def load_cpo_dataset(data_args: DataConfig, train_args: CPOConfig, tokenizer):
             for dataset_name, path in data_args.cpo_data_path.items():
                 with open(path, "r") as f:
                     train_dataset = json.load(f)["data"]
-                    train_dataset = Dataset.from_dict(
-                        train_dataset, info=DatasetInfo(dataset_name=dataset_name))
+                    train_dataset = Dataset.from_list(
+                        list(train_dataset.values()), info=DatasetInfo(dataset_name=dataset_name))
                 if data_args.max_train_samples is not None:
                     max_train_samples = min(
                         len(train_dataset), data_args.max_train_samples)
@@ -104,8 +104,7 @@ def load_cpo_dataset(data_args: DataConfig, train_args: CPOConfig, tokenizer):
                     if not data_args.streaming:
                         train_dataset = train_dataset.map(
                             cpo_prompt_function,
-                            batched=True,
-                            batch_size=1,
+                            batched=False,
                             num_proc=data_args.preprocessing_num_workers,
                             load_from_cache_file=not data_args.overwrite_cache,
                             desc="Running CPO preprocessing",
@@ -113,8 +112,7 @@ def load_cpo_dataset(data_args: DataConfig, train_args: CPOConfig, tokenizer):
                     else:
                         train_dataset = train_dataset.map(
                             cpo_prompt_function,
-                            batched=True,
-                            batch_size=1,
+                            batched=False
                         )
                 processed_datasets.append(train_dataset)
 
