@@ -143,3 +143,5 @@ yarl==1.17.1
 zlib-state==0.1.9
 bm25s==0.1.0
 pytest==8.3.3
+trl==0.12.1
+bitsandbytes>=0.44.0
