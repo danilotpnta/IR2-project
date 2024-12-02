@@ -13,9 +13,8 @@ from transformers import (
     HfArgumentParser,
     set_seed
 )
+from trl import CPOTrainer, CPOConfig
 
-from ALMA.utils.cpo_trainer import CPOTrainer
-from ALMA.utils.cpo_config import CPOConfig
 from inpars.cpo_dataset import load_cpo_dataset, DataConfig
 
 @dataclass
@@ -90,7 +89,7 @@ def train(
 
     # load dataset
     # with fieds ["doc_id", "text"] (would be nice to have some gt queries as well.)
-    # dataset = load_cpo_dataset(data_config, cpo_config, model_args.tokenizer)
+    train_dataset, eval_dataset, test_dataset = load_cpo_dataset(data_config, cpo_config, model_args.tokenizer)
 
     # avoid passive-agressive warning message
     cpo_config.remove_unused_columns = False
@@ -104,7 +103,7 @@ def train(
         tokenizer=model_args.tokenizer,
         peft_config=peft_config,
         args=cpo_config,
-        train_dataset=None,
+        train_dataset=train_dataset,
         callbacks=[SavePeftModelCallback]
     )
     # train
