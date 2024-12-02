@@ -88,14 +88,16 @@ def train(
         cpo_config.report_to = "wandb"
 
     # load dataset
-    # with fieds ["doc_id", "text"] (would be nice to have some gt queries as well.)
-    train_dataset, eval_dataset, test_dataset = load_cpo_dataset(data_config, cpo_config, model_args.tokenizer)
+    train_dataset, eval_dataset, test_dataset = load_cpo_dataset(
+        data_config, cpo_config, model_args.tokenizer)
 
     # avoid passive-agressive warning message
     cpo_config.remove_unused_columns = False
 
     # load model
-    model = AutoModelForCausalLM.from_pretrained(model_args.model_name_or_path)
+    model = AutoModelForCausalLM.from_pretrained(
+        model_args.model_name_or_path, **model_args.model_kwargs)
+
 
     # TODO: prepare trainer
     trainer = CPOTrainer(

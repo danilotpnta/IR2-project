@@ -1,8 +1,13 @@
 {
-    "model_name_or_path": "neuralmagic/Meta-Llama-3.1-8B-Instruct-FP8",
+    "model_name_or_path": "hugging-quants/Meta-Llama-3.1-8B-Instruct-BNB-NF4",
+    "model_kwargs": {
+        "torch_dtype": "torch.bfloat16",
+        "low_cpu_mem_usage": true,
+        "device_map": "auto"
+    },
     "use_wandb": true,
     "cpo_data_path": {
-        "msmarco-dataset/train": "/scratch-shared/scur2850/cpo_dataset/llmt_preference_Meta-Llama-3.1-8B-Instruct-FP8_msmarco-document-train_100.json"
+        "msmarco-dataset/train": "data.json"
     },
     "output_dir": "/scratch-shared/scur2850/cpo_output/model",
     "max_source_length": 8192,

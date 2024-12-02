@@ -23,7 +23,7 @@ source $PROJECT_ROOT/scripts/snellius_setup.sh
 setup $PROJECT_ROOT
 cd $PROJECT_ROOT
 
-MODEL_NAME="neuralmagic/Meta-Llama-3.1-8B-Instruct-FP8"
+MODEL_NAME="hugging-quants/Meta-Llama-3.1-8B-Instruct-BNB-NF4"
 TEACHER_MODEL="neuralmagic/Llama-3.1-Nemotron-70B-Instruct-HF-FP8-dynamic"
 OUTPUT_DIR="/scratch-shared/$USER/cpo_dataset"
 NUM_SAMPLES=100
