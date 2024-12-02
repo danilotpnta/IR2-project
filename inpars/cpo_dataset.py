@@ -65,22 +65,29 @@ def load_cpo_dataset(data_args: DataConfig, train_args: CPOConfig, tokenizer):
         # should be fine since we already generated the prompt
         return True
 
-    def cpo_prompt_function(example):
+    def cpo_prompt_function(examples):
         new_examples = {
             "prompt": [],
             "chosen": [],
             "rejected": [],
         }
 
-        prompt = example["prompt"]
-        prompt_tok = tokenizer(
-            prompt, max_length=data_args.max_source_length, padding=True, truncation=True
-        ).input_ids
-        chosen, rejected = get_chosen_reject(example)
-        if meet_requirements(prompt_tok):
-            new_examples["prompt"].append(prompt)
-            new_examples["chosen"].append(chosen)
-            new_examples["rejected"].append(rejected)
+        # examples is a dict of lists
+        # we want a list of dicts. convert
+        examples = [
+            {k: v[i] for k, v in examples.items()}
+            for i in range(len(examples["prompt"]))
+        ]
+        for example in examples:
+            prompt = example["prompt"]
+            prompt_tok = tokenizer(
+                prompt, max_length=data_args.max_source_length, padding=True, truncation=True
+            ).input_ids
+            chosen, rejected = get_chosen_reject(example)
+            if meet_requirements(prompt_tok):
+                new_examples["prompt"].append(prompt)
+                new_examples["chosen"].append(chosen)
+                new_examples["rejected"].append(rejected)
         return new_examples
 
     # Preprocessing the datasets.
@@ -104,7 +111,8 @@ def load_cpo_dataset(data_args: DataConfig, train_args: CPOConfig, tokenizer):
                     if not data_args.streaming:
                         train_dataset = train_dataset.map(
                             cpo_prompt_function,
-                            batched=False,
+                            batched=True,
+                            batch_size=1,
                             num_proc=data_args.preprocessing_num_workers,
                             load_from_cache_file=not data_args.overwrite_cache,
                             desc="Running CPO preprocessing",
@@ -112,7 +120,8 @@ def load_cpo_dataset(data_args: DataConfig, train_args: CPOConfig, tokenizer):
                     else:
                         train_dataset = train_dataset.map(
                             cpo_prompt_function,
-                            batched=False
+                            batched=True,
+                            batch_size=1
                         )
                 processed_datasets.append(train_dataset)
 
