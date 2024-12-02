@@ -17,6 +17,8 @@ from trl import CPOTrainer, CPOConfig
 
 from inpars.cpo_dataset import load_cpo_dataset, DataConfig
 
+from pynvml import *
+
 @dataclass
 class ModelArguments:
     model_name_or_path: str = field(
@@ -38,7 +40,6 @@ class ModelArguments:
         self.config = AutoConfig.from_pretrained(self.model_name_or_path)
         self.tokenizer = AutoTokenizer.from_pretrained(self.model_name_or_path)
         if self.tokenizer.pad_token_id is None:
-            self.tokenizer.add_special_tokens({'pad_token': '[PAD]'})
             self.tokenizer.pad_token = self.tokenizer.eos_token
             self.tokenizer.pad_token_id = self.tokenizer.eos_token_id
             
@@ -116,7 +117,7 @@ def train(
     # input_embed = model.get_input_embeddings()
     # input_embed.weight = torch.nn.Parameter(torch.cat([input_embed.weight, torch.zeros(1, model_args.config.hidden_size).to(input_embed.weight)], dim=0))
     # input_embed.padding_idx = model_args.tokenizer.pad_token_id
-
+    cpo_config.auto_find_batch_size = True
     # TODO: prepare trainer
     trainer = CPOTrainer(
         model=model,
@@ -124,8 +125,9 @@ def train(
         peft_config=peft_config,
         args=cpo_config,
         train_dataset=train_dataset,
-        callbacks=[SavePeftModelCallback]
+        callbacks=[SavePeftModelCallback()]
     )
+    print(trainer.model)
     # train
     trainer.train()
     # save model
