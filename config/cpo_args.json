@@ -1,7 +1,7 @@
 {
-    "model_name_or_path": "hugging-quants/Meta-Llama-3.1-8B-Instruct-BNB-NF4",
+    "model_name_or_path": "meta-llama/Meta-Llama-3.1-8B",
     "model_kwargs": {
-        "torch_dtype": "torch.bfloat16",
+        "torch_dtype": "torch.float16",
         "low_cpu_mem_usage": true,
         "device_map": "auto"
     },
