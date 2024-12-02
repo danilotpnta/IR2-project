@@ -11,4 +11,5 @@ setup() {
 	echo "Python version: $(python --version)"
 	echo "Java version: $(java --version)"
 	echo "Java compiler version: $(javac --version)"
+	huggingface-cli login --token $HF_ACCESS_TOKEN
 }

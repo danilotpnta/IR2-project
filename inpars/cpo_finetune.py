@@ -22,6 +22,9 @@ class ModelArguments:
     model_name_or_path: str = field(
         metadata={"help": "Path to pretrained model or model identifier from huggingface.co/models"}
     )
+    model_kwargs: dict = field(
+        metadata={"help": "keyword arguments to pass to the model when loading"}
+    )
     use_wandb: bool = field(
         default=False,
         metadata={"help": "Use wandb for logging"}
@@ -34,6 +37,8 @@ class ModelArguments:
     def __post_init__(self):
         self.config = AutoConfig.from_pretrained(self.model_name_or_path)
         self.tokenizer = AutoTokenizer.from_pretrained(self.model_name_or_path)
+        if self.tokenizer.pad_token_id is None:
+            self.tokenizer.add_special_tokens({'pad_token': '[PAD]'})
         if self.use_wandb:
             self.wandb_api_key = os.getenv("WANDB_API_KEY")
             if self.wandb_api_key is None:
@@ -85,7 +90,7 @@ def train(
         wandb.config.update(data_config)
         wandb.config.update(cpo_config)
         wandb.config.update(peft_config)
-        cpo_config.report_to = "wandb"
+        cpo_config.report_to = ["wandb"]
 
     # load dataset
     train_dataset, eval_dataset, test_dataset = load_cpo_dataset(
