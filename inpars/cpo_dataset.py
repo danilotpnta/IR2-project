@@ -7,6 +7,7 @@ import ftfy
 import ir_datasets
 import numpy as np
 import pandas as pd
+import torch
 from tqdm import tqdm
 from tqdm.contrib.concurrent import process_map
 from transformers import AutoModel, AutoTokenizer
@@ -278,6 +279,8 @@ def build_cpo_dataset(
     dataset_name: str = "msmarco-document/train",
     num_examples: int = 3,
     seed: int = 42,
+    student_dtype='auto',
+    teacher_dtype='auto',
     max_doc_length: int = 512,
     max_query_length: int = 64,
     max_prompt_length: int = 1024,
@@ -520,6 +523,7 @@ def build_cpo_dataset(
                 teacher_model,
                 output_dir,
                 max_prompt_length=max_prompt_length,
+                dtype=teacher_dtype,
             )
         else:
             # load model and tokenizer
@@ -552,6 +556,7 @@ def build_cpo_dataset(
                 model_name,
                 output_dir,
                 max_prompt_length=max_prompt_length,
+                dtype=student_dtype
             )
         else:
             # load model and tokenizer
@@ -664,6 +669,8 @@ if __name__ == "__main__":
     parser.add_argument("--max_query_length", type=int, default=64)
     parser.add_argument("--max_prompt_length", type=int, default=8192)
     parser.add_argument("--max_new_token", type=int, default=32)
+    parser.add_argument("--student_use_fp16", action='store_true')
+    parser.add_argument("--teacher_use_fp16", action='store_true')
     parser.add_argument("--use_vllm", action="store_true")
     args = parser.parse_args()
 
@@ -676,6 +683,8 @@ if __name__ == "__main__":
         dataset_name=args.dataset_name,
         num_examples=args.num_examples,
         seed=args.seed,
+        student_dtype=torch.float16 if args.student_use_fp16 else 'auto',
+        teacher_dtype=torch.float16 if args.teacher_use_fp16 else 'auto',
         max_doc_length=args.max_doc_length,
         max_query_length=args.max_query_length,
         max_prompt_length=args.max_prompt_length,

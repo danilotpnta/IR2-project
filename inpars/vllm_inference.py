@@ -25,6 +25,7 @@ def generate_queries(
     max_tokens=256,
     logprobs=None,
     stop=["\n", "Example", "Document:"],
+    dtype='auto',
     **kwargs,
 ):
     save_folder = os.path.join(save_folder, model_name)
@@ -58,7 +59,7 @@ def generate_queries(
         gpu_memory_utilization=0.95,
         max_model_len=max_prompt_length,
         enable_chunked_prefill=True,
-        dtype="auto",
+        dtype=dtype,
         tensor_parallel_size=GPUS_AVAILABLE,
         max_num_batched_tokens=max_prompt_length
     )

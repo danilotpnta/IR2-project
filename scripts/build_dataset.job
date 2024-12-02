@@ -23,7 +23,7 @@ source $PROJECT_ROOT/scripts/snellius_setup.sh
 setup $PROJECT_ROOT
 cd $PROJECT_ROOT
 
-MODEL_NAME="hugging-quants/Meta-Llama-3.1-8B-Instruct-BNB-NF4"
+MODEL_NAME="meta-llama/Meta-Llama-3.1-8B"
 TEACHER_MODEL="neuralmagic/Llama-3.1-Nemotron-70B-Instruct-HF-FP8-dynamic"
 OUTPUT_DIR="/scratch-shared/$USER/cpo_dataset"
 NUM_SAMPLES=100
@@ -40,4 +40,5 @@ srun python -m inpars.cpo_dataset \
 --prompt_template_name $PROMPT_TEMPLATE_NAME \
 --dataset_name $DATASET_NAME \
 --num_examples $NUM_EXAMPLES \
+--student_use_fp16 \
 --use_vllm
