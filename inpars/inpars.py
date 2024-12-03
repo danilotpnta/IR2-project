@@ -128,11 +128,12 @@ class InPars:
         self.tokenizer.pad_token = self.tokenizer.eos_token
 
         self.fewshot_examples = load_examples(corpus, self.n_fewshot_examples)
+        
+        # Fix : Prompt names are dataset dependent when using promptagator. 
+        prompt_name = f'{prompt}-{corpus}' if prompt == 'promptagator' else prompt
         self.prompter = Prompt.load(
-            name=prompt,
-            dataset=corpus,
+            name=prompt_name,
             examples=self.fewshot_examples,
-            n_generated_queries=n_generated_queries,
             tokenizer=self.tokenizer,
             max_query_length=self.max_query_length,
             max_doc_length=self.max_doc_length,
