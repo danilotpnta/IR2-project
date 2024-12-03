@@ -16,7 +16,7 @@ date
 PROJECT_ROOT=/home/$USER/IR2-project
 DATADIR=/scratch-shared/InPars-data
 
-source $PROJECT_ROOT/scripts/snellius_setup_H100.sh
+source $PROJECT_ROOT/scripts/snellius_setup.sh
 setup $PROJECT_ROOT
 
 echo "Environment setup complete."
