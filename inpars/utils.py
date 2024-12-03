@@ -30,7 +30,6 @@ def chunks(lst, n):
 
 class TRECRun:
     def __init__(self, run_file, sep=r"\s+"):
-        print(run_file)
         if not os.path.exists(run_file):
             dest_file = os.path.join(
                 RUNS_CACHE_FOLDER,
