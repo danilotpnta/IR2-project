@@ -2,10 +2,20 @@
 
 setup() {
 	module purge
+	
+	module load 2023
 	module load 2024
 	module load Java/21.0.2
 
 	source "$1/.venv/bin/activate"
+
+	# export CUDA_VISIBLE_DEVICES=0
+	export TF_ENABLE_ONEDNN_OPTS=0
+	# export WANDB_API_KEY=
+	# export HF_TOKEN=
+	
+	# The pretrained MonoT5 models are >22GB, so cache in scratch-shared
+	export HF_HOME="/scratch-shared/InPars-data/HF_Cache"
 
 	echo "Environment setup complete."
 	echo "Python version: $(python --version)"

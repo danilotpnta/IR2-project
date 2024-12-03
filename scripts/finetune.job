@@ -1,0 +1,26 @@
+#!/bin/bash
+#SBATCH --partition=gpu_h100
+#SBATCH --gpus=1
+#SBATCH --job-name=finetuning
+#SBATCH --time=00:04:00
+#SBATCH --output=logs/scifact_repro_finetune.out
+#SBATCH --error=logs/scifact_repro_finetune.err
+#SBATCH --ear=on
+#SBATCH --ear-policy=monitoring
+#SBATCH --ear-verbose=1
+
+date 
+
+# Setup environment
+PROJECT_ROOT=/home/$USER/IR2-project
+DATADIR=/scratch-shared/InPars-data
+
+source $PROJECT_ROOT/scripts/snellius_setup.sh
+setup $PROJECT_ROOT
+
+echo "Environment setup complete."
+echo "Python version: $(python --version)"
+echo "Java version: $(java --version)"
+
+srun python -m src.reproduce --dataset='scifact' --generationLLM='EleutherAI/gpt-j-6B'  --data_dir=$DATADIR \
+        --finetune

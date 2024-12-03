@@ -6,7 +6,8 @@ from transformers import set_seed
 from .inpars import InPars
 import sys
 
-print(sys.version_info)
+from torch.cuda import empty_cache
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--base_model", default="EleutherAI/gpt-j-6B")
@@ -95,13 +96,12 @@ if __name__ == "__main__":
         doc_ids=dataset["doc_id"],
         batch_size=args.batch_size,
     )
-    
-    if args.only_generate_prompt:
-        exit()
+    dataset['query'] = [example['query'] for example in generated]
+    dataset['log_probs'] = [example['log_probs'] for example in generated]
+    dataset['prompt_text'] = [example['prompt_text'] for example in generated]
+    dataset['doc_id'] = [example['doc_id'] for example in generated]
+    dataset['fewshot_examples'] = [example['fewshot_examples'] for example in generated]
+    dataset.to_json(args.output, orient='records', lines=True)
 
-    dataset["query"] = [example["query"] for example in generated]
-    dataset["log_probs"] = [example["log_probs"] for example in generated]
-    dataset["prompt_text"] = [example["prompt_text"] for example in generated]
-    dataset["doc_id"] = [example["doc_id"] for example in generated]
-    dataset["fewshot_examples"] = [example["fewshot_examples"] for example in generated]
-    dataset.to_json(args.output, orient="records", lines=True)
+    del generator
+    empty_cache()
