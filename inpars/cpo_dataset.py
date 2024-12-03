@@ -220,6 +220,7 @@ def create_prompts(
         }
     }
     """
+    # TODO: Make this use multiprocessing like in `build_cpo_dataset`
     prompts = {}
     for doc_id in tqdm(doc_ids, desc="Creating prompts"):
         prompt = prompt_builder.build(
@@ -564,7 +565,11 @@ def build_cpo_dataset(
             teacher_queries = generate_queries(teacher_model, teacher_tokenizer, output)
 
         for doc_id, query in teacher_queries.items():
-            text, logprobs, cumlogprob = query
+            if use_vllm:
+                text, logprobs, cumlogprob = query
+            else:
+                raise NotImplementedError("Non-VLLM inference is not supported yet.")
+
             output["data"][doc_id]["teacher_query"] = text
 
         # checkpoint
@@ -597,7 +602,11 @@ def build_cpo_dataset(
             student_queries = generate_queries(student_model, student_tokenizer, output)
 
         for doc_id, query in student_queries.items():
-            text, logprobs, cumlogprob = query
+            if use_vllm:
+                text, logprobs, cumlogprob = query
+            else:
+                raise NotImplementedError("Non-VLLM inference is not supported yet.")
+
             output["data"][doc_id]["student_query"] = text
 
         # checkpoint
