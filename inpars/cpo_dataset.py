@@ -23,6 +23,7 @@ from .utils import _process_map_d, _process_map_q
 
 logger = logging.getLogger(__name__)
 
+
 @dataclass
 class DataConfig:
     cpo_data_path: Dict[str, str]
@@ -31,34 +32,47 @@ class DataConfig:
     preprocessing_num_workers: int = 4
     overwrite_cache: bool = True
     streaming: bool = False
+    use_cached_dataset: bool = True
+
+
+REF_SCORE_KEY = "ref_score"
+TEACHER_SCORE_KEY = "teacher_score"
+STUDENT_SCORE_KEY = "student_score"
+
+REF_OUTPUT_KEY = "ref_query"
+TEACHER_OUTPUT_KEY = "teacher_query"
+STUDENT_OUTPUT_KEY = "student_query"
+
 
 def load_cpo_dataset(data_args: DataConfig, train_args: CPOConfig, tokenizer):
     """
     Implementation adapted from
     https://github.com/fe1ixxu/ALMA/blob/master/utils/utils.py :: `preprocess_cpo_data`
     """
+
     def get_chosen_reject(example):
-        teacher_score_key = "teacher_score"
-        student_score_key = "student_score"
-        ref_score_key = "ref_score"
+        # Finding the indices of the highest and lowest scores
+        # Loop unrolling for efficiency
 
-        teacher_output_key = "teacher_query"
-        student_output_key = "student_query"
-        ref_output_key = "ref_query"
-
-        # Defining the sentences and their scores
-        sentences = [example[ref_output_key],
-                     example[teacher_output_key], example[student_output_key]]
-        scores = [example[ref_score_key],
-                  example[teacher_score_key], example[student_score_key]]
-
-        # Finding the indexes for the highest and lowest scores
-        highest_score_index = scores.index(max(scores))
-        lowest_score_index = scores.index(min(scores))
+        if example[TEACHER_SCORE_KEY] > example[STUDENT_SCORE_KEY]:
+            highest_score_index = (
+                TEACHER_OUTPUT_KEY if example[TEACHER_SCORE_KEY] > example[REF_SCORE_KEY] else REF_OUTPUT_KEY
+            )
+            lowest_score_index = (
+                STUDENT_OUTPUT_KEY if example[STUDENT_SCORE_KEY] < example[REF_SCORE_KEY] else REF_OUTPUT_KEY
+            )
+        else:
+            highest_score_index = (
+                STUDENT_OUTPUT_KEY if example[STUDENT_SCORE_KEY] > example[REF_SCORE_KEY] else REF_OUTPUT_KEY
+            )
+            lowest_score_index = (
+                TEACHER_OUTPUT_KEY if example[TEACHER_SCORE_KEY] < example[REF_SCORE_KEY] else REF_OUTPUT_KEY
+            )
 
         # Assigning the corresponding sentences
-        highest_score_sentence = sentences[highest_score_index]
-        lowest_score_sentence = sentences[lowest_score_index]
+        highest_score_sentence = example[highest_score_index]
+        lowest_score_sentence = example[lowest_score_index]
+
         return highest_score_sentence, lowest_score_sentence
 
     def meet_requirements(prompt_tok):
@@ -82,7 +96,10 @@ def load_cpo_dataset(data_args: DataConfig, train_args: CPOConfig, tokenizer):
         for example in examples:
             prompt = example["prompt"]
             prompt_tok = tokenizer(
-                prompt, max_length=data_args.max_source_length, padding=True, truncation=True
+                prompt,
+                max_length=data_args.max_source_length,
+                padding=True,
+                truncation=True,
             ).input_ids
             chosen, rejected = get_chosen_reject(example)
             if meet_requirements(prompt_tok):
@@ -95,20 +112,33 @@ def load_cpo_dataset(data_args: DataConfig, train_args: CPOConfig, tokenizer):
     # NOTE: eval_datasets and test_datasets are not used in the current implementation
     # also note: this is also how the ALMA implementation is done
     train_datasets, eval_datasets, test_datasets = None, None, None
+    dataset_path = Path(data_args.output_dir) / "llmt_cpo_inparsplus"
     if train_args.do_train:
+        if (
+            data_args.output_dir is not None
+            and data_args.use_cached_dataset
+            and dataset_path.exists()
+        ):
+            train_datasets = Dataset.load_from_disk(dataset_path)
+            return train_datasets, eval_datasets, test_datasets
+
         processed_datasets = []
         if data_args.cpo_data_path:
             for dataset_name, path in data_args.cpo_data_path.items():
                 with open(path, "r") as f:
                     train_dataset = json.load(f)["data"]
                     train_dataset = Dataset.from_list(
-                        list(train_dataset.values()), info=DatasetInfo(dataset_name=dataset_name))
+                        list(train_dataset.values()),
+                        info=DatasetInfo(dataset_name=dataset_name),
+                    )
                 if data_args.max_train_samples is not None:
                     max_train_samples = min(
-                        len(train_dataset), data_args.max_train_samples)
-                    train_dataset = train_dataset.select(
-                        range(max_train_samples))
-                with train_args.main_process_first(desc=f"CPO train {dataset_name} map pre-processing"):
+                        len(train_dataset), data_args.max_train_samples
+                    )
+                    train_dataset = train_dataset.select(range(max_train_samples))
+                with train_args.main_process_first(
+                    desc=f"CPO train {dataset_name} map pre-processing"
+                ):
                     if not data_args.streaming:
                         train_dataset = train_dataset.map(
                             cpo_prompt_function,
@@ -120,15 +150,13 @@ def load_cpo_dataset(data_args: DataConfig, train_args: CPOConfig, tokenizer):
                         )
                     else:
                         train_dataset = train_dataset.map(
-                            cpo_prompt_function,
-                            batched=True,
-                            batch_size=1
+                            cpo_prompt_function, batched=True, batch_size=1
                         )
                 processed_datasets.append(train_dataset)
 
         train_datasets = concatenate_datasets(processed_datasets)
-        train_datasets = train_datasets.shuffle(seed=train_args.seed)
-
+        train_datasets: Dataset = train_datasets.shuffle(seed=train_args.seed)
+        train_datasets.save_to_disk(dataset_path)
     return train_datasets, eval_datasets, test_datasets
 
 
@@ -279,8 +307,8 @@ def build_cpo_dataset(
     dataset_name: str = "msmarco-document/train",
     num_examples: int = 3,
     seed: int = 42,
-    student_dtype='auto',
-    teacher_dtype='auto',
+    student_dtype="auto",
+    teacher_dtype="auto",
     max_doc_length: int = 512,
     max_query_length: int = 64,
     max_prompt_length: int = 1024,
@@ -477,7 +505,7 @@ def build_cpo_dataset(
             max_query_length=max_query_length,
             max_prompt_length=max_prompt_length,
             max_new_token=max_new_token,
-            deterministic=True
+            deterministic=True,
         )
 
         # load tokenizer NOTE: this only works if the student and the teacher have the same tokenizer
@@ -556,7 +584,7 @@ def build_cpo_dataset(
                 model_name,
                 output_dir,
                 max_prompt_length=max_prompt_length,
-                dtype=student_dtype
+                dtype=student_dtype,
             )
         else:
             # load model and tokenizer
@@ -669,8 +697,8 @@ if __name__ == "__main__":
     parser.add_argument("--max_query_length", type=int, default=64)
     parser.add_argument("--max_prompt_length", type=int, default=8192)
     parser.add_argument("--max_new_token", type=int, default=32)
-    parser.add_argument("--student_use_fp16", action='store_true')
-    parser.add_argument("--teacher_use_fp16", action='store_true')
+    parser.add_argument("--student_use_fp16", action="store_true")
+    parser.add_argument("--teacher_use_fp16", action="store_true")
     parser.add_argument("--use_vllm", action="store_true")
     args = parser.parse_args()
 
@@ -683,8 +711,8 @@ if __name__ == "__main__":
         dataset_name=args.dataset_name,
         num_examples=args.num_examples,
         seed=args.seed,
-        student_dtype=torch.float16 if args.student_use_fp16 else 'auto',
-        teacher_dtype=torch.float16 if args.teacher_use_fp16 else 'auto',
+        student_dtype=torch.float16 if args.student_use_fp16 else "auto",
+        teacher_dtype=torch.float16 if args.teacher_use_fp16 else "auto",
         max_doc_length=args.max_doc_length,
         max_query_length=args.max_query_length,
         max_prompt_length=args.max_prompt_length,

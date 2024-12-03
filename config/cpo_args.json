@@ -19,5 +19,6 @@
     "beta": 0.1,
     "cpo_alpha": 1.0,
     "do_train": true,
+    "use_cached_dataset": true,
     "peft_config_path": "/home/scur2850/IR2-project/config/peft_config.json"
 }
