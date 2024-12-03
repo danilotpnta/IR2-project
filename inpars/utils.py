@@ -40,7 +40,12 @@ class TRECRun:
             if not os.path.exists(dest_file):
                 os.makedirs(os.path.dirname(os.path.abspath(dest_file)), exist_ok=True)
                 # TODO handle errors ("Entry not found")
-                download(PREBUILT_RUN_URL.format(dataset=run_file), dest_file)
+                try:
+                    download(PREBUILT_RUN_URL.format(dataset=run_file), dest_file)
+
+                except Exception as e:
+                    assert e
+
             run_file = dest_file
 
         self.run_file = run_file
@@ -79,4 +84,4 @@ class TRECRun:
         self.df["rank"] = self.df.groupby("qid").cumcount() + 1
 
     def save(self, path):
-        self.df.to_csv(path, index=False, sep="\t", header=False, float_format="%.15f")
+        self.df.to_csv(path, index=False, sep="\t", header=False, float_format='%.15f')

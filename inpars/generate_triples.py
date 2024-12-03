@@ -67,12 +67,13 @@ if __name__ == "__main__":
         for i, line in enumerate(f):
             row = json.loads(line.strip())
 
-            if not row["query"]:
+            q_key = "query" if row.get("query") is not None else "question"
+            if not row[q_key]:
                 n_no_query += 1
                 continue
-
-            query = " ".join(row["query"].split())  # Removes line breaks and tabs.
-            queries.append((query, None, row["doc_id"]))
+                
+            query = ' '.join(row[q_key].split())  # Removes line breaks and tabs.
+            queries.append((query, None, row['doc_id']))
             tsv_writer.writerow([i, query])
 
     tmp_run = f"{Path(args.output).parent}/tmp-run-{args.dataset}.txt"
@@ -111,6 +112,8 @@ if __name__ == "__main__":
         )
         for qid in tqdm(results, desc="Sampling"):
             hits = results[qid]
+            if int(qid) >= len(queries):
+                continue
             query, log_probs, pos_doc_id = queries[int(qid)]
             n_examples += 1
             sampled_ranks = random.sample(
@@ -141,4 +144,5 @@ if __name__ == "__main__":
             f"{n_docs_not_found} docs returned by the search engine but not found in the corpus."
         )
 
+    
     print("Done!")

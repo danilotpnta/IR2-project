@@ -2,6 +2,7 @@ import pickle
 import ftfy
 import json
 from tqdm import tqdm
+import pandas as pd 
 import os
 
 
@@ -10,7 +11,10 @@ def load_corpus(dataset_name, source="ir_datasets"):
     if os.path.exists(cache_path):
         print(f"Loading cached documents from {cache_path}")
         with open(cache_path, "rb") as f:
-            return pickle.load(f)
+
+            loaded_data =  pickle.load(f)
+            print('loaded from cache!')
+            return pd.DataFrame(loaded_data)
 
     texts = []
     docs_ids = []
@@ -60,7 +64,7 @@ def load_corpus(dataset_name, source="ir_datasets"):
 
     with open(cache_path, "wb") as f:
         pickle.dump({"doc_id": docs_ids, "text": texts}, f)
-    return {"doc_id": docs_ids, "text": texts}
+    return pd.DataFrame({'doc_id': docs_ids, 'text': texts})
 
 
 def load_queries(dataset_name, source="ir_datasets"):
@@ -89,4 +93,5 @@ def load_queries(dataset_name, source="ir_datasets"):
 
     with open(cache_path, "wb") as f:
         pickle.dump(queries, f)
+
     return queries
