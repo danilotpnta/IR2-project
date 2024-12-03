@@ -1,4 +1,5 @@
 import os
+
 os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
 
 import torch
@@ -24,8 +25,8 @@ flan_prompt = """Is the following passage relevant to the query?
 Query: {query}
 Passage: {text}"""
 
-monot5_outputs = ['false', 'true']
-flant5_outputs = ['no', 'yes']
+monot5_outputs = ["false", "true"]
+flant5_outputs = ["no", "yes"]
 
 
 @dataclass
@@ -44,9 +45,7 @@ class ExtraArguments:
     )
     base_model: str = field(
         default="t5-base",
-        metadata={
-            "help": "Base model to fine-tune."
-        },
+        metadata={"help": "Base model to fine-tune."},
     )
     max_doc_length: int = field(
         default=300,
@@ -59,63 +58,75 @@ class ExtraArguments:
 def split_triples(triples, seq2seq=True):
     if seq2seq:
         examples = {
-            'label': [],
-            'text': [],
+            "label": [],
+            "text": [],
         }
-        for i in range(len(triples['query'])):
-            examples['text'].append(prompt_template.format(query=triples["query"][i], text=triples["positive"][i]))
-            examples['label'].append(token_true)
-            examples['text'].append(prompt_template.format(query=triples["query"][i], text=triples["negative"][i]))
-            examples['label'].append(token_false)
+        for i in range(len(triples["query"])):
+            examples["text"].append(
+                prompt_template.format(
+                    query=triples["query"][i], text=triples["positive"][i]
+                )
+            )
+            examples["label"].append(token_true)
+            examples["text"].append(
+                prompt_template.format(
+                    query=triples["query"][i], text=triples["negative"][i]
+                )
+            )
+            examples["label"].append(token_false)
     else:
         examples = {
-            'label': [],
-            'query': [],
-            'text': [],
+            "label": [],
+            "query": [],
+            "text": [],
         }
-        for i in range(len(triples['query'])):
-            examples['query'].append(triples['query'][i])
-            examples['text'].append(triples['positive'][i])
-            examples['label'].append(token_true)
-            examples['query'].append(triples['query'][i])
-            examples['text'].append(triples['negative'][i])
-            examples['label'].append(token_false)
+        for i in range(len(triples["query"])):
+            examples["query"].append(triples["query"][i])
+            examples["text"].append(triples["positive"][i])
+            examples["label"].append(token_true)
+            examples["query"].append(triples["query"][i])
+            examples["text"].append(triples["negative"][i])
+            examples["label"].append(token_false)
     return examples
 
 
 def split_pairs(pairs, seq2seq=True):
     if seq2seq:
         examples = {
-            'label': [],
-            'text': [],
+            "label": [],
+            "text": [],
         }
-        for i in range(len(pairs['query'])):
-            examples['text'].append(prompt_template.format(query=pairs["query"][i], text=pairs["passage"][i]))
-            examples['label'].append([token_false, token_true][int(pairs["label"][i])])
+        for i in range(len(pairs["query"])):
+            examples["text"].append(
+                prompt_template.format(
+                    query=pairs["query"][i], text=pairs["passage"][i]
+                )
+            )
+            examples["label"].append([token_false, token_true][int(pairs["label"][i])])
     else:
         examples = {
-            'label': [],
-            'query': [],
-            'text': [],
+            "label": [],
+            "query": [],
+            "text": [],
         }
-        for i in range(len(pairs['query'])):
-            examples['query'].append(pairs["query"][i])
-            examples['text'].append(pairs["passage"][i])
-            examples['label'].append([token_false, token_true][int(pairs["label"][i])])
+        for i in range(len(pairs["query"])):
+            examples["query"].append(pairs["query"][i])
+            examples["text"].append(pairs["passage"][i])
+            examples["label"].append([token_false, token_true][int(pairs["label"][i])])
     return examples
 
 
 def tokenize(batch, seq2seq=True):
     if seq2seq:
         kwargs = {
-            'text': batch['text'],
-            'truncation': True,
+            "text": batch["text"],
+            "truncation": True,
         }
     else:
         kwargs = {
-            'text': batch['query'],
-            'text_pair': batch['text'],
-            'truncation': 'only_second',
+            "text": batch["query"],
+            "text_pair": batch["text"],
+            "truncation": "only_second",
         }
 
     tokenized = tokenizer(
@@ -125,9 +136,11 @@ def tokenize(batch, seq2seq=True):
     )
 
     if seq2seq:
-        tokenized['labels'] = tokenizer(batch['label'])['input_ids'] if seq2seq else batch['label']
+        tokenized["labels"] = (
+            tokenizer(batch["label"])["input_ids"] if seq2seq else batch["label"]
+        )
     else:
-        tokenized['labels'] = [[float(i)] for i in batch['label']]
+        tokenized["labels"] = [[float(i)] for i in batch["label"]]
 
     return tokenized
 
@@ -153,7 +166,7 @@ if __name__ == "__main__":
     seq2seq = any(
         True
         for architecture in config.architectures
-        if 'ForConditionalGeneration' in architecture
+        if "ForConditionalGeneration" in architecture
     )
 
     if seq2seq:
@@ -161,7 +174,7 @@ if __name__ == "__main__":
         trainer_cls = Seq2SeqTrainer
         data_collator = DataCollatorForSeq2Seq(tokenizer)
 
-        if 'flan' in args.base_model:
+        if "flan" in args.base_model:
             prompt_template = flan_prompt
             token_false, token_true = flant5_outputs
         else:
@@ -169,7 +182,7 @@ if __name__ == "__main__":
             token_false, token_true = monot5_outputs
     else:
         config.num_labels = 1
-        config.problem_type = 'multi_label_classification'
+        config.problem_type = "multi_label_classification"
         model = AutoModelForSequenceClassification.from_pretrained(
             args.base_model,
             config=config,
@@ -178,49 +191,48 @@ if __name__ == "__main__":
         data_collator = DataCollatorWithPadding(tokenizer)
         token_false, token_true = [0, 1]
 
-
     if args.triples:
         dataset = load_dataset(
-            'csv',
+            "csv",
             data_files=args.triples,
-            sep='\t',
-            names=('query', 'positive', 'negative'),
+            sep="\t",
+            names=("query", "positive", "negative"),
         )
         dataset = dataset.map(
             partial(split_triples, seq2seq=seq2seq),
-            remove_columns=('query', 'positive', 'negative'),
+            remove_columns=("query", "positive", "negative"),
             batched=True,
         )
     elif args.pairs:
         dataset = load_dataset(
-            'csv',
+            "csv",
             data_files=args.pairs,
-            sep='\t',
-            names=('query', 'passage', 'label'),
+            sep="\t",
+            names=("query", "passage", "label"),
         )
         dataset = dataset.map(
             partial(split_pairs, seq2seq=seq2seq),
-            remove_columns=('query', 'passage', 'passage'),
+            remove_columns=("query", "passage", "passage"),
             batched=True,
         )
     else:
-        raise Exception('We must define a triples or a pairs file.')
+        raise Exception("We must define a triples or a pairs file.")
 
     if total_examples:
-        dataset['train'] = dataset['train'].shuffle().select(range(total_examples))
+        dataset["train"] = dataset["train"].shuffle().select(range(total_examples))
 
     dataset = dataset.map(
         partial(tokenize, seq2seq=seq2seq),
-        remove_columns=('text', 'label'),
+        remove_columns=("text", "label"),
         batched=True,
-        desc='Tokenizing',
+        desc="Tokenizing",
     )
 
     trainer = trainer_cls(
         model=model,
         tokenizer=tokenizer,
         args=training_args,
-        train_dataset=dataset['train'],
+        train_dataset=dataset["train"],
         data_collator=data_collator,
     )
     
@@ -230,4 +242,3 @@ if __name__ == "__main__":
     trainer.save_metrics('train', train_metrics.metrics)
     
     torch.cuda.empty_cache()
-    

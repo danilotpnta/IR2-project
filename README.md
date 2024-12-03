@@ -12,7 +12,9 @@ This project focuses on a reproducibility study of the InPars Toolkit, a tool de
 git clone https://github.com/danilotpnta/IR2-project
 cd IR2-project
 ```
+
 ### Step 2: Create and Activate the Conda Environment
+
 ```bash
 conda env create -f environment.yml
 conda activate IR2-env
@@ -33,6 +35,7 @@ setup $PWD
 ```
 
 ### Step 3: Install the Required Packages
+
 ```bash
 pip install --upgrade pip
 
@@ -49,6 +52,7 @@ pip install --no-cache-dir -r requirements.txt
 ```
 
 You could also use the pip package manager to install InPars toolkit.
+
 ```bash
 pip install inpars
 ```

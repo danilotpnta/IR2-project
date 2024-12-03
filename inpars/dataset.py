@@ -11,6 +11,7 @@ def load_corpus(dataset_name, source="ir_datasets"):
     if os.path.exists(cache_path):
         print(f"Loading cached documents from {cache_path}")
         with open(cache_path, "rb") as f:
+
             loaded_data =  pickle.load(f)
             print('loaded from cache!')
             return pd.DataFrame(loaded_data)
@@ -92,4 +93,5 @@ def load_queries(dataset_name, source="ir_datasets"):
 
     with open(cache_path, "wb") as f:
         pickle.dump(queries, f)
+
     return queries
