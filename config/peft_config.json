@@ -1,3 +1,5 @@
 {
-    "peft_type": "LORA"
+    "peft_type": "LORA",
+    "r": 16,
+    "lora_alpha": 16
 }

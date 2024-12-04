@@ -1,5 +1,7 @@
+from math import prod
 import os
 import csv
+import sys
 import ftfy
 import requests
 import pandas as pd
@@ -13,13 +15,16 @@ RUNS_CACHE_FOLDER = os.environ["HOME"] + "/.cache/inpars"
 def download(url: str, fname: str):
     resp = requests.get(url, stream=True)
     total = int(resp.headers.get("content-length", 0))
-    with open(fname, "wb") as file, tqdm(
-        desc=fname,
-        total=total,
-        unit="iB",
-        unit_scale=True,
-        unit_divisor=1024,
-    ) as bar:
+    with (
+        open(fname, "wb") as file,
+        tqdm(
+            desc=fname,
+            total=total,
+            unit="iB",
+            unit_scale=True,
+            unit_divisor=1024,
+        ) as bar,
+    ):
         for data in resp.iter_content(chunk_size=1024):
             size = file.write(data)
             bar.update(size)
@@ -82,14 +87,35 @@ class TRECRun:
     def save(self, path):
         self.df.to_csv(path, index=False, sep="\t", header=False, float_format="%.15f")
 
+
 def _process_map_q(q):
     return q.query_id, ftfy.fix_text(q.text)
+
 
 def _process_map_d(d):
     id, d = d
     return id, ftfy.fix_text(d.title + " " + d.body)
 
+
 def _process_map_p(document, doc_id, prompter, n_examples=3):
-    return doc_id, prompter.build(
-        document, n_examples=n_examples
-    )
+    return doc_id, prompter.build(document, n_examples=n_examples)
+
+
+def count_parameters(model, predicate=lambda p: p.requires_grad):
+    model_parameters = filter(predicate, model.parameters())
+    params = sum([prod(p.size()) for p in model_parameters])
+    return params
+
+
+def get_optimal_cpu_count():
+    platform, pyver = sys.platform, sys.version_info.minor
+    if pyver >= 13:
+        return os.process_cpu_count() - 1
+    if platform == "linux":
+        return len(os.sched_getaffinity(0)) - 1 if pyver >= 12 else os.cpu_count()
+    elif platform == "darwin":
+        return os.cpu_count()
+    elif platform == "win32":
+        return os.cpu_count(logical=False)
+    else:
+        return 1

@@ -19,7 +19,7 @@ from inpars.utils import _process_map_p
 
 from .prompt import Prompt
 from .query_eval import QueryEval
-from .utils import _process_map_d, _process_map_q
+from .utils import _process_map_d, _process_map_q, get_optimal_cpu_count
 
 logger = logging.getLogger(__name__)
 
@@ -29,10 +29,10 @@ class DataConfig:
     cpo_data_path: Dict[str, str]
     max_train_samples: Optional[int] = None
     max_source_length: int = 8192
-    preprocessing_num_workers: int = 4
+    preprocessing_num_workers: int = get_optimal_cpu_count()
     overwrite_cache: bool = True
     streaming: bool = False
-    use_cached_dataset: bool = True
+    dataset_cache: Optional[str] = None
 
 
 REF_SCORE_KEY = "ref_score"
@@ -112,11 +112,10 @@ def load_cpo_dataset(data_args: DataConfig, train_args: CPOConfig, tokenizer):
     # NOTE: eval_datasets and test_datasets are not used in the current implementation
     # also note: this is also how the ALMA implementation is done
     train_datasets, eval_datasets, test_datasets = None, None, None
-    dataset_path = Path(data_args.output_dir) / "llmt_cpo_inparsplus"
+    dataset_path = Path(data_args.dataset_cache) / "llmt_cpo_inparsplus"
     if train_args.do_train:
         if (
-            data_args.output_dir is not None
-            and data_args.use_cached_dataset
+            data_args.dataset_cache
             and dataset_path.exists()
         ):
             train_datasets = Dataset.load_from_disk(dataset_path)
@@ -150,7 +149,7 @@ def load_cpo_dataset(data_args: DataConfig, train_args: CPOConfig, tokenizer):
                         )
                     else:
                         train_dataset = train_dataset.map(
-                            cpo_prompt_function, batched=True, batch_size=1
+                            cpo_prompt_function, batched=True, batch_size=1,
                         )
                 processed_datasets.append(train_dataset)
 
