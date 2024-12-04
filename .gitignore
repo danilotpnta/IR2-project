@@ -148,6 +148,8 @@ IR2-env/
 
 cache/
 
+# snellius
+logs/
 # avoid logging wandb files
 wandb/
 reranker/

@@ -235,8 +235,10 @@ if __name__ == "__main__":
         train_dataset=dataset["train"],
         data_collator=data_collator,
     )
-    torch.cuda.empty_cache()
+    
     train_metrics = trainer.train()
     trainer.save_model(training_args.output_dir)
     trainer.save_state()
-    trainer.save_metrics("train", train_metrics.metrics)
+    trainer.save_metrics('train', train_metrics.metrics)
+    
+    torch.cuda.empty_cache()
