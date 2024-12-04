@@ -1,0 +1,43 @@
+#!/bin/bash
+
+#SBATCH --partition=gpu
+#SBATCH --gpus=1
+
+#SBATCH --job-name=CPO_EVAL
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=16
+#SBATCH --time=00:15:00
+#SBATCH --mem=3000M
+#SBATCH --output=cpo_eval.out
+
+#SBATCH --ear=on
+#SBATCH --ear-policy=monitoring
+#SBATCH --ear-verbose=1
+
+date
+export HF_HOME="/scratch-shared/$USER"
+export GPU_COUNT=$(nvidia-smi --list-gpus | wc -l)
+
+# make sure the correct modules are used and that the virtual environment is active
+PROJECT_ROOT=/home/$USER/IR2-project
+source $PROJECT_ROOT/scripts/snellius_setup.sh
+setup $PROJECT_ROOT
+cd $PROJECT_ROOT
+
+# parameters
+SCRATCH_DIR=/scratch-shared/$USER
+
+DATASET_PATH=$SCRATCH_DIR/cpo_dataset/llmt_preference_Meta-Llama-3.1-8B_msmarco-document-train_100.json
+MODEL_NAME=meta-llama/Meta-Llama-3.1-8B
+OUTPUT_DIR=$SCRATCH_DIR/cpo_eval
+QUERY_EVAL_PATH=$SCRATCH_DIR/cpo_dataset
+BATCH_SIZE=32
+
+# rest of the script
+srun python -m inpars.cpo_eval \
+--dataset $DATASET_PATH\
+--model_name $MODEL_NAME\
+--output_dir $OUTPUT_DIR\
+--query_eval_path $QUERY_EVAL_PATH\
+--batch_size $BATCH_SIZE\
+--use_vllm
