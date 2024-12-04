@@ -8,9 +8,10 @@ import ir_datasets
 import numpy as np
 import pandas as pd
 import torch
+from torch.utils.data import DataLoader
 from tqdm import tqdm
 from tqdm.contrib.concurrent import process_map
-from transformers import AutoModel, AutoTokenizer
+from transformers import AutoModelForCausalLM, AutoTokenizer
 from trl import CPOConfig
 from datasets import concatenate_datasets, Dataset, DatasetInfo
 from dataclasses import dataclass
@@ -231,15 +232,26 @@ def create_prompts(
 
 
 def generate_queries(
-    model: AutoModel,
+    prompts: list[str],
+    doc_ids: list[str],
+    model: AutoModelForCausalLM,
     tokenizer: AutoTokenizer,
-    dataset: Dict[str, Any],  # the dataset we built, not the dataframe
-    batch_size: int = 32,
+    save_folder="cache",
+    max_prompt_length=8192,
+    batch_size=256,
+    top_k=500,
+    top_p=0.9,
+    temperature=0.8,
+    max_tokens=256,
+    logprobs=None,
+    stop=["\n", "Example", "Document:"],
+    dtype='auto',
+    **kwargs,
 ):
     """
     Generate queries using the given model and dataset.
     Parameters:
-    - model_name: str
+    - model: PreTrainedModel
         The name of the model to use.
     - dataset: dict
         The dataset to generate queries for.
@@ -254,15 +266,68 @@ def generate_queries(
     - "example_documents": List[str] -- the example document texts
     - "example_queries": List[str] -- the example query texts
     """
-    # doc_id -> query
-    queries: Dict[str, str] = {}
 
-    # construct collator
-    # iterate over the dataset
+    save_folder = Path(save_folder) / model.name_or_path
+    save_folder.mkdir(parents=True, exist_ok=True)
+    save_file = save_folder / "results_recovery.json"
 
-    # generate queries
-    # save queries
-    return queries
+    try:
+        with open(save_file, "r") as f:
+            generations = json.load(f)
+        logger.info(f"Found {len(generations)} saved generations.")
+    except Exception:
+        logger.info("No generated queries were recovered.")
+        generations = {}
+
+    # build sampling params
+    sampling_params = {
+        "top_k": top_k,
+        "top_p": top_p,
+        "temperature": temperature,
+        "max_tokens": max_tokens,
+        "logprobs": logprobs,
+    }
+    # make dataloaders
+    loader_docid = DataLoader(doc_ids[len(generations):], batch_size=batch_size)
+    loader_prompts = DataLoader(prompts[len(generations):], batch_size=batch_size)
+
+    for d_ids, p in tqdm(
+        zip(loader_docid, loader_prompts),
+        desc="Generating queries",
+        unit="batch",
+        total=len(loader_docid),
+    ):
+        # tokenize the prompts
+        inputs = tokenizer(
+            p,
+            max_length=max_prompt_length,
+            padding=True,
+            truncation=True,
+            return_tensors="pt",
+        )
+        # generate queries
+        outputs = model.generate(
+            inputs["input_ids"],
+            use_cache=True,
+            **sampling_params,
+            **kwargs,
+        )
+
+        # Save the outputs.
+        generations |= {
+            d_id: (
+                output.outputs[0].text,
+                # this is a bit hard to serialize trivially
+                repr(output.outputs[0].logprobs),
+                output.outputs[0].cumulative_logprob,
+            )
+            for d_id, output in zip(d_ids, outputs)
+        }
+
+        with open(save_file, "w") as f:
+            json.dump(generations, f)
+
+    return generations
 
 
 def score_queries(
@@ -555,19 +620,22 @@ def build_cpo_dataset(
             )
         else:
             # load model and tokenizer
-            # TODO: we might want to just pass the model and tokenizer
             teacher_tokenizer = AutoTokenizer.from_pretrained(teacher_model)
-            teacher_model = AutoModel.from_pretrained(teacher_model)
-            # build prompter
+            teacher_model = AutoModelForCausalLM.from_pretrained(teacher_model)
 
-            # TODO: Not complete yet
-            teacher_queries = generate_queries(teacher_model, teacher_tokenizer, output)
+            prompts = [data["prompt"] for data in output["data"].values()]
+            teacher_queries = generate_queries(
+                model=teacher_model,
+                tokenizer=teacher_tokenizer,
+                prompts=prompts,
+                doc_ids=output["doc_ids"],
+                save_folder=output_dir,
+                max_prompt_length=max_prompt_length,
+                dtype=teacher_dtype,
+            )
 
         for doc_id, query in teacher_queries.items():
-            if use_vllm:
-                text, logprobs, cumlogprob = query
-            else:
-                raise NotImplementedError("Non-VLLM inference is not supported yet.")
+            text, logprobs, cumlogprob = query
 
             output["data"][doc_id]["teacher_query"] = text
 
@@ -592,20 +660,22 @@ def build_cpo_dataset(
             )
         else:
             # load model and tokenizer
-            # TODO: we might want to just pass the model and tokenizer
-            student_tokenizer = AutoTokenizer.from_pretrained(model_name)
-            student_model = AutoModel.from_pretrained(model_name)
-            # build prompter
+            student_tokenizer = AutoTokenizer.from_pretrained(student_model)
+            student_model = AutoModelForCausalLM.from_pretrained(student_model)
 
-            # TODO: Not complete yet
-            student_queries = generate_queries(student_model, student_tokenizer, output)
+            prompts = [data["prompt"] for data in output["data"].values()]
+            student_queries = generate_queries(
+                model=student_model,
+                tokenizer=student_tokenizer,
+                prompts=prompts,
+                doc_ids=output["doc_ids"],
+                save_folder=output_dir,
+                max_prompt_length=max_prompt_length,
+                dtype=student_dtype,
+            )
 
         for doc_id, query in student_queries.items():
-            if use_vllm:
-                text, logprobs, cumlogprob = query
-            else:
-                raise NotImplementedError("Non-VLLM inference is not supported yet.")
-
+            text, logprobs, cumlogprob = query
             output["data"][doc_id]["student_query"] = text
 
         # checkpoint
