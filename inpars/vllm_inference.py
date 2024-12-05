@@ -36,6 +36,9 @@ def generate_queries(
         with open(save_file, "r") as f:
             generations = json.load(f)
         logger.info(f"Found {len(generations)} saved generations.")
+        if len(generations) == len(prompts):
+            logger.info("All generations have already been recovered.")
+            return generations
     except Exception:
         logger.info("No generated queries were recovered.")
         generations = {}
@@ -58,7 +61,7 @@ def generate_queries(
         seed=SEED,
         gpu_memory_utilization=0.95,
         max_model_len=max_prompt_length,
-        enable_chunked_prefill=True,
+        enable_chunked_prefill=False,
         dtype=dtype,
         tensor_parallel_size=GPUS_AVAILABLE,
         max_num_batched_tokens=max_prompt_length
