@@ -19,8 +19,6 @@ from unsloth import FastLanguageModel
 
 from inpars.cpo_dataset import load_cpo_dataset, DataConfig
 
-from pynvml import *
-
 from .utils import count_parameters
 
 
@@ -37,6 +35,10 @@ class ModelArguments:
     use_wandb: bool = field(default=False, metadata={"help": "Use wandb for logging"})
     peft_config_path: str = field(
         default=None, metadata={"help": "Path to peft config file"}
+    )
+    resume_from_checkpoint: str | bool | None = field(
+        default=None,
+        metadata={"help": "If provided, will try to resume from this checkpoint path"},
     )
 
     def __post_init__(self):
@@ -116,7 +118,7 @@ def train(
         model_args.model_name_or_path,
         **model_args.model_kwargs,
     )
-    
+
     # Patch the model to have a pad token
     model.config.pad_token_id = model_args.tokenizer.pad_token_id
 
@@ -140,7 +142,7 @@ def train(
 
     # TODO: Figure out a better patch than this.
     del peft_config["task_type"]
-    
+
     model = FastLanguageModel.get_peft_model(model, **peft_config)
 
     # 8-bit optimizer to deal with strained memory requirements
@@ -159,8 +161,7 @@ def train(
             cpo_config.num_train_epochs
             * len(train_dataset)
             // cpo_config.train_batch_size
-        )
-        // 16,
+        ),
     )
 
     # TODO: prepare trainer
@@ -178,9 +179,11 @@ def train(
     logger.info(
         f"Number of total parameters: {count_parameters(model, lambda _: True)/10**6:0.1f}M"
     )
-    logger.info(f"Number of trainable parameters: {count_parameters(model)/10**6:0.1f}M")
+    logger.info(
+        f"Number of trainable parameters: {count_parameters(model)/10**6:0.1f}M"
+    )
     # train
-    trainer.train()
+    trainer.train(resume_from_checkpoint=model_args.resume_from_checkpoint)
     # save model
     trainer.save_model()
 
