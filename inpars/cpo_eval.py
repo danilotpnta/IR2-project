@@ -19,10 +19,8 @@ def cpo_eval(
         tokenizer: AutoTokenizer,
         query_eval: QueryEval,
         batch_size: int = 256,
-        max_doc_length: int = 512,
-        max_query_length: int = 64,
         max_prompt_length: int = 1024,
-        max_new_token: int = 16,
+        max_tokens: int = 256,
         dtype: torch.dtype = torch.float16,
     ):
     """
@@ -33,20 +31,16 @@ def cpo_eval(
     if isinstance(model, str):
         gen_fn = vllm_generate
         generator_kwargs = {
-            "max_doc_length": max_doc_length,
-            "max_query_length": max_query_length,
             "max_prompt_length": max_prompt_length,
-            "max_new_token": max_new_token,
+            "max_tokens": max_tokens,
             "dtype": dtype,
         }
     else:
         gen_fn = generate_queries
         generator_kwargs = {
             "tokenizer": tokenizer,
-            "max_doc_length": max_doc_length,
-            "max_query_length": max_query_length,
             "max_prompt_length": max_prompt_length,
-            "max_new_token": max_new_token,
+            "max_tokens": max_tokens,
             "dtype": dtype,
         }
     # Generate queries
