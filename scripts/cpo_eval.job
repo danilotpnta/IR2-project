@@ -27,10 +27,10 @@ cd $PROJECT_ROOT
 SCRATCH_DIR=/scratch-shared/$USER
 
 DATASET_PATH=/scratch-shared/scur2850/cpo_output/dataset100/llmt_cpo_inparsplus
-MODEL_NAME=meta-llama/Meta-Llama-3.1-8B
+MODEL_NAME=/scratch-shared/scur2850/cpo_output/model_100/checkpoint-75
 OUTPUT_DIR=$SCRATCH_DIR/cpo_eval
 QUERY_EVAL_PATH=$SCRATCH_DIR/cpo_dataset
-BATCH_SIZE=128
+BATCH_SIZE=64
 
 # rest of the script
 srun python -m inpars.cpo_eval \

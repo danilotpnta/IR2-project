@@ -58,7 +58,6 @@ def cpo_eval(
         }
         logger.info(f"Using HuggingFace model for inference.")
     # Generate queries
-    logger.info(f"Calling generator fn with kwargs:\n%s", json.dumps(generator_kwargs, indent=2))
     generator_output = gen_fn(**generator_kwargs)
     logger.info(f"Generated %d queries.", len(generator_output))
     texts = []
@@ -74,11 +73,11 @@ def cpo_eval(
         unit="batch",
         total=len(doc_ids),
     ):
-        batch_query = texts[i:i+query_eval.batch_size]
-        batch_doc_id = doc_ids[i:i+query_eval.batch_size]
+        batch_query = texts[i:i+batch_size]
+        batch_doc_id = doc_ids[i:i+batch_size]
         batch_scores = query_eval.score(batch_query, batch_doc_id)
         scores.update({
-            doc_id: score
+            doc_id: score.item()
             for doc_id, score in zip(batch_doc_id, batch_scores)
             })
 
