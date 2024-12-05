@@ -13,6 +13,7 @@ from tqdm import tqdm
 from tqdm.contrib.concurrent import process_map
 from transformers import AutoModelForCausalLM, AutoTokenizer
 from trl import CPOConfig
+from trl.trainer.utils import pad_to_length
 from datasets import concatenate_datasets, Dataset, DatasetInfo
 from dataclasses import dataclass
 
@@ -266,7 +267,7 @@ def generate_queries(
     - "example_documents": List[str] -- the example document texts
     - "example_queries": List[str] -- the example query texts
     """
-
+    logger.info(f"Generating queries for %d documents", len(doc_ids))
     save_folder = Path(save_folder) / model.name_or_path
     save_folder.mkdir(parents=True, exist_ok=True)
     save_file = save_folder / "results_recovery.json"
@@ -275,6 +276,9 @@ def generate_queries(
         with open(save_file, "r") as f:
             generations = json.load(f)
         logger.info(f"Found {len(generations)} saved generations.")
+        if len(generations) == len(prompts):
+            logger.info("All generations have already been recovered.")
+            return generations
     except Exception:
         logger.info("No generated queries were recovered.")
         generations = {}
@@ -287,10 +291,11 @@ def generate_queries(
         "max_tokens": max_tokens,
         "logprobs": logprobs,
     }
+    logger.info("Sampling params: %s", sampling_params)
     # make dataloaders
     loader_docid = DataLoader(doc_ids[len(generations):], batch_size=batch_size)
     loader_prompts = DataLoader(prompts[len(generations):], batch_size=batch_size)
-
+    logger.info("Starting generation for %d documents", len(loader_docid))
     for d_ids, p in tqdm(
         zip(loader_docid, loader_prompts),
         desc="Generating queries",
@@ -305,6 +310,7 @@ def generate_queries(
             truncation=True,
             return_tensors="pt",
         )
+        logger.info("Tokenized prompts")
         # generate queries
         outputs = model.generate(
             inputs["input_ids"],
@@ -312,16 +318,19 @@ def generate_queries(
             **sampling_params,
             **kwargs,
         )
-
+        logger.info("Generated queries")
+        # decode
+        outputs = pad_to_length(
+            outputs,
+            length=max_tokens,
+            pad_token_id=tokenizer.pad_token_id
+        )
+        outputs_decoded = tokenizer.batch_decode(outputs, skip_special_tokens=True)
+        logger.info("Decoded queries\n%s", "\n".join(outputs_decoded))
         # Save the outputs.
         generations |= {
-            d_id: (
-                output.outputs[0].text,
-                # this is a bit hard to serialize trivially
-                repr(output.outputs[0].logprobs),
-                output.outputs[0].cumulative_logprob,
-            )
-            for d_id, output in zip(d_ids, outputs)
+            d_id: output
+            for d_id, output in zip(d_ids, outputs_decoded)
         }
 
         with open(save_file, "w") as f:
