@@ -19,7 +19,11 @@ def cpo_eval(
         tokenizer: AutoTokenizer,
         query_eval: QueryEval,
         batch_size: int = 256,
-        **generator_kwargs: Dict[str, Any],
+        max_doc_length: int = 512,
+        max_query_length: int = 64,
+        max_prompt_length: int = 1024,
+        max_new_token: int = 16,
+        dtype: torch.dtype = torch.float16,
     ):
     """
     Given a list of prompts and doc_ids, generate queries and evaluate them using QueryEval.
@@ -28,11 +32,31 @@ def cpo_eval(
     """
     if isinstance(model, str):
         gen_fn = vllm_generate
+        generator_kwargs = {
+            "max_doc_length": max_doc_length,
+            "max_query_length": max_query_length,
+            "max_prompt_length": max_prompt_length,
+            "max_new_token": max_new_token,
+            "dtype": dtype,
+        }
     else:
         gen_fn = generate_queries
-        generator_kwargs["tokenizer"] = tokenizer
+        generator_kwargs = {
+            "tokenizer": tokenizer,
+            "max_doc_length": max_doc_length,
+            "max_query_length": max_query_length,
+            "max_prompt_length": max_prompt_length,
+            "max_new_token": max_new_token,
+            "dtype": dtype,
+        }
     # Generate queries
-    generator_output = gen_fn(prompts, doc_ids, model, batch_size=32, **generator_kwargs)
+    generator_output = gen_fn(
+        prompts,
+        doc_ids,
+        model,
+        batch_size=32,
+        **generator_kwargs)
+
     texts = []
     for doc_id in doc_ids:
         text, _, _ = generator_output[doc_id]
@@ -120,8 +144,6 @@ if __name__ == '__main__':
         query_eval=query_eval,
         batch_size=args.batch_size,
         dtype=torch.bfloat16,
-        max_prompt_length=1024
-        # TODO: generator kwargs
     )
     # save output
     output_path = Path(args.output_dir)
