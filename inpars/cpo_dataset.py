@@ -288,20 +288,21 @@ def generate_queries(
         "top_k": top_k,
         "top_p": top_p,
         "temperature": temperature,
-        "max_tokens": max_tokens,
+        "max_new_tokens": max_tokens,
         "logprobs": logprobs,
     }
     logger.info("Sampling params: %s", sampling_params)
     # make dataloaders
     loader_docid = DataLoader(doc_ids[len(generations):], batch_size=batch_size)
     loader_prompts = DataLoader(prompts[len(generations):], batch_size=batch_size)
-    logger.info("Starting generation for %d documents", len(loader_docid))
+    logger.info("Starting generation for %d document batches", len(loader_docid))
     for d_ids, p in tqdm(
         zip(loader_docid, loader_prompts),
         desc="Generating queries",
         unit="batch",
         total=len(loader_docid),
     ):
+        logger.info("batch doc_ids: %s", d_ids)
         # tokenize the prompts
         inputs = tokenizer(
             p,
@@ -309,7 +310,7 @@ def generate_queries(
             padding=True,
             truncation=True,
             return_tensors="pt",
-        )
+        ).to(torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu"))
         logger.info("Tokenized prompts")
         # generate queries
         outputs = model.generate(
@@ -323,13 +324,13 @@ def generate_queries(
         outputs = pad_to_length(
             outputs,
             length=max_tokens,
-            pad_token_id=tokenizer.pad_token_id
+            pad_value=tokenizer.pad_token_id
         )
         outputs_decoded = tokenizer.batch_decode(outputs, skip_special_tokens=True)
         logger.info("Decoded queries\n%s", "\n".join(outputs_decoded))
         # Save the outputs.
         generations |= {
-            d_id: output
+            d_id: (output, None, None)
             for d_id, output in zip(d_ids, outputs_decoded)
         }
 

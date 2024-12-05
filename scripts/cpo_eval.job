@@ -28,7 +28,7 @@ SCRATCH_DIR=/scratch-shared/$USER
 
 DATASET_PATH=/scratch-shared/scur2850/cpo_output/dataset100/llmt_cpo_inparsplus
 MODEL_NAME=/scratch-shared/scur2850/cpo_output/model_100/checkpoint-75
-OUTPUT_DIR=$SCRATCH_DIR/cpo_eval
+OUTPUT_DIR=$SCRATCH_DIR/cpo_eval_ft
 QUERY_EVAL_PATH=$SCRATCH_DIR/cpo_dataset
 BATCH_SIZE=64
 
@@ -39,4 +39,3 @@ srun python -m inpars.cpo_eval \
 --output_dir $OUTPUT_DIR \
 --query_eval_path $QUERY_EVAL_PATH \
 --batch_size $BATCH_SIZE \
---use_vllm

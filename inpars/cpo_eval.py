@@ -7,7 +7,7 @@ import logging
 
 import torch
 from datasets import Dataset
-from transformers import PreTrainedModel, AutoTokenizer
+from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from .query_eval import QueryEval
 from .cpo_dataset import generate_queries # we should move this.
@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 def cpo_eval(
         prompts: List[str],
         doc_ids: List[str],
-        model: Union[PreTrainedModel, str],
+        model: Union[AutoModelForCausalLM, str],
         tokenizer: AutoTokenizer,
         query_eval: QueryEval,
         batch_size: int = 256,
@@ -108,11 +108,12 @@ if __name__ == '__main__':
     parser.add_argument("--use_wandb", action="store_true",
                         help="Use wandb for logging")
     args = parser.parse_args()
+    logger.info("parsed arguments\n%s", args)
     # load model and tokenizer if needed
     if args.use_vllm:
         model = args.model_name
     else:
-        model = PreTrainedModel.from_pretrained(args.model_name)
+        model = AutoModelForCausalLM.from_pretrained(args.model_name)
         tokenizer = AutoTokenizer.from_pretrained(args.model_name)
     # load dataset
     dataset_path = Path(args.dataset)
