@@ -3,6 +3,7 @@ from pathlib import Path
 from typing import List, Tuple, Union, Dict, Any
 from tqdm.auto import tqdm
 import pandas as pd
+import logging
 
 import torch
 from datasets import Dataset
@@ -11,6 +12,8 @@ from transformers import PreTrainedModel, AutoTokenizer
 from .query_eval import QueryEval
 from .cpo_dataset import generate_queries # we should move this.
 from .vllm_inference import generate_queries as vllm_generate
+
+logger = logging.getLogger(__name__)
 
 def cpo_eval(
         prompts: List[str],
@@ -28,29 +31,36 @@ def cpo_eval(
     
     QueryEval should already be indexed at this point.
     """
+    logger.info(f"Generating queries for %d prompts.", len(prompts))
     if isinstance(model, str):
         gen_fn = vllm_generate
         generator_kwargs = {
+            "prompts": prompts,
+            "doc_ids": doc_ids,
+            "model_name": model,
             "max_prompt_length": max_prompt_length,
             "max_tokens": max_tokens,
+            "batch_size": batch_size,
             "dtype": dtype,
         }
+        logger.info(f"Using VLLM for inference.")
     else:
         gen_fn = generate_queries
         generator_kwargs = {
+            "prompts": prompts,
+            "doc_ids": doc_ids,
+            "model": model,
             "tokenizer": tokenizer,
             "max_prompt_length": max_prompt_length,
             "max_tokens": max_tokens,
+            "batch_size": batch_size,
             "dtype": dtype,
         }
+        logger.info(f"Using HuggingFace model for inference.")
     # Generate queries
-    generator_output = gen_fn(
-        prompts,
-        doc_ids,
-        model,
-        batch_size=32,
-        **generator_kwargs)
-
+    logger.info(f"Calling generator fn with kwargs:\n%s", json.dumps(generator_kwargs, indent=2))
+    generator_output = gen_fn(**generator_kwargs)
+    logger.info(f"Generated %d queries.", len(generator_output))
     texts = []
     for doc_id in doc_ids:
         text, _, _ = generator_output[doc_id]
@@ -81,6 +91,7 @@ def cpo_eval(
     return metrics, scores
 
 if __name__ == '__main__':
+    logging.basicConfig(level=logging.INFO)
     import argparse
     parser = argparse.ArgumentParser()
     parser.add_argument("--dataset", type=str, required=True,
