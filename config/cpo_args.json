@@ -5,7 +5,7 @@
     },
     "use_wandb": true,
     "cpo_data_path": {
-        "msmarco-dataset/train": "/scratch-shared/scur2850/cpo_dataset/llmt_preference_Meta-Llama-3.1-8B-Instruct-FP8_msmarco-document-train_100000.json"
+        "msmarco-dataset/train": "/scratch-shared/scur2850/cpo_dataset/llmt_preference_Meta-Llama-3.1-8B-Instruct-FP8_msmarco-document-train_100.json"
     },
     "output_dir": "/scratch-shared/scur2850/cpo_output/model",
     "max_source_length": 8192,
@@ -19,6 +19,6 @@
     "do_train": true,
     "fp16": false,
     "bf16": true,
-    "dataset_cache": "/scratch-shared/scur2850/cpo_output/dataset100000",
+    "dataset_cache": "/scratch-shared/scur2850/cpo_output/dataset100",
     "peft_config_path": "/home/scur2850/IR2-project/config/peft_config.json"
 }

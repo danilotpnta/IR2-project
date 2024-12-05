@@ -16,7 +16,7 @@ setup() {
 	# export HF_TOKEN=
 	
 	# The pretrained MonoT5 models are >22GB, so cache in scratch-shared
-	export HF_HOME="/scratch-shared/InPars-data/HF_Cache"
+	export HF_HOME="/scratch-shared/$USER"
 
 	echo "Environment setup complete."
 	echo "Python version: $(python --version)"

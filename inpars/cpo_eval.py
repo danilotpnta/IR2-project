@@ -4,12 +4,13 @@ from typing import List, Tuple, Union, Dict, Any
 from tqdm.auto import tqdm
 import pandas as pd
 
+import torch
 from datasets import Dataset
 from transformers import PreTrainedModel, AutoTokenizer
 
-from query_eval import QueryEval
-from cpo_dataset import generate_queries # we should move this.
-from vllm_inference import generate_queries as vllm_generate
+from .query_eval import QueryEval
+from .cpo_dataset import generate_queries # we should move this.
+from .vllm_inference import generate_queries as vllm_generate
 
 def cpo_eval(
         prompts: List[str],
@@ -31,7 +32,7 @@ def cpo_eval(
         gen_fn = generate_queries
         generator_kwargs["tokenizer"] = tokenizer
     # Generate queries
-    generator_output = gen_fn(prompts, doc_ids, model, **generator_kwargs)
+    generator_output = gen_fn(prompts, doc_ids, model, batch_size=32, **generator_kwargs)
     texts = []
     for doc_id in doc_ids:
         text, _, _ = generator_output[doc_id]
@@ -117,7 +118,9 @@ if __name__ == '__main__':
         model=model,
         tokenizer=tokenizer if not args.use_vllm else None,
         query_eval=query_eval,
-        batch_size=args.batch_size
+        batch_size=args.batch_size,
+        dtype=torch.bfloat16,
+        max_prompt_length=1024
         # TODO: generator kwargs
     )
     # save output
