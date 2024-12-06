@@ -87,6 +87,17 @@ def cpo_eval(
         "min_score": min(scores.values()),
         "max_score": max(scores.values())
     }
+    outputs = {
+        "doc_id": doc_id,
+        "prompt": prompt,
+        "query": query,
+        "score": score
+        for doc_id, prompt, query, score in zip(doc_ids, prompts, texts, scores)
+    }
+
+    with open('generator_output.json', "w") as f:
+        json.dump(outputs, f)
+
     return metrics, scores
 
 if __name__ == '__main__':
