@@ -88,10 +88,11 @@ def cpo_eval(
         "max_score": max(scores.values())
     }
     outputs = {
-        "doc_id": doc_id,
-        "prompt": prompt,
-        "query": query,
-        "score": score
+        doc_id: {
+            "prompt": prompt,
+            "query": query,
+            "score": score
+        }
         for doc_id, prompt, query, score in zip(doc_ids, prompts, texts, scores)
     }
 
