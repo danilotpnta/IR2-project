@@ -313,16 +313,21 @@ def generate_queries(
             padding=True,
             truncation=True,
             return_tensors="pt",
+            return_attention_mask=True
         ).to(device)
         logger.info("Tokenized prompts")
         # generate queries
         outputs = model.generate(
             inputs["input_ids"],
+            attention_mask=inputs["attention_mask"],
+            tokenizer=tokenizer,
             use_cache=True,
             **sampling_params,
             **kwargs,
         )
         logger.info("Generated queries")
+        # omit the input
+        outputs = outputs[:, inputs["input_ids"].shape[1] :]
         # decode
         outputs = pad_to_length(
             outputs,

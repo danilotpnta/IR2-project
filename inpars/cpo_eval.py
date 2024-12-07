@@ -118,7 +118,7 @@ if __name__ == '__main__':
         model = args.model_name
     else:
         model = AutoModelForCausalLM.from_pretrained(args.model_name)
-        tokenizer = AutoTokenizer.from_pretrained(args.model_name)
+        tokenizer = AutoTokenizer.from_pretrained(args.model_name, padding_side='left')
         if tokenizer.pad_token_id is None:
             tokenizer.pad_token = tokenizer.eos_token
             tokenizer.pad_token_id = tokenizer.eos_token_id
