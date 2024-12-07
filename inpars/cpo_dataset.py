@@ -672,8 +672,8 @@ def build_cpo_dataset(
             )
         else:
             # load model and tokenizer
-            student_tokenizer = AutoTokenizer.from_pretrained(student_model)
-            student_model = AutoModelForCausalLM.from_pretrained(student_model)
+            student_tokenizer = AutoTokenizer.from_pretrained(model_name)
+            student_model = AutoModelForCausalLM.from_pretrained(model_name)
 
             prompts = [data["prompt"] for data in output["data"].values()]
             student_queries = generate_queries(
