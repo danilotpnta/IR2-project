@@ -119,6 +119,9 @@ if __name__ == '__main__':
     else:
         model = AutoModelForCausalLM.from_pretrained(args.model_name)
         tokenizer = AutoTokenizer.from_pretrained(args.model_name)
+        if tokenizer.pad_token_id is None:
+            tokenizer.pad_token = tokenizer.eos_token
+            tokenizer.pad_token_id = tokenizer.eos_token_id
     # load dataset
     dataset_path = Path(args.dataset)
     if not dataset_path.exists():
