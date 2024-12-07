@@ -79,7 +79,7 @@ class QueryEval(torch.nn.Module):
         logger.info("Computing embeddings for %s%s", self.dense_name,
                     " and BM25" if self.bm25 else "")
         # save the mapping of doc_id to index
-        self.doc_id2idx = {doc_id: idx for idx, doc_id in enumerate(documents['doc_id'])}
+        self.doc_id2idx = {doc_id: idx for idx, doc_id in enumerate(documents["doc_id"])}
         # compute embeddings for each model and store them on cpu
         documents = documents['text'].tolist()
         self.doc_embeddings = []
@@ -88,7 +88,7 @@ class QueryEval(torch.nn.Module):
             embeddings = self._get_embeddings(batch)
             self.doc_embeddings.append(embeddings)
         # concatenate
-        self.doc_embeddings = torch.cat(self.doc_embeddings, dim=1)
+        self.doc_embeddings = torch.cat(self.doc_embeddings, dim=0).cpu()
         logger.debug("nr of documents: %d", len(documents))
         logger.debug("Document embeddings shape: %s", self.doc_embeddings.shape)
 
@@ -100,11 +100,13 @@ class QueryEval(torch.nn.Module):
 
         logger.info("Document corpus loaded successfully")
 
-    def _prepare_cache(self, cache_path: Path) -> None:
-        index_path = cache_path / "index.json"
-        embedding_path = cache_path / "embeddings.pt"
-        bm25_path = cache_path / "bm25.pkl"
-        return index_path, embedding_path, bm25_path
+    @staticmethod
+    def _prepare_cache(cache_path: Path):
+        index_path = cache_path / "query_eval_index.json"
+        embedding_path = cache_path / "query_eval_embeddings.pt"
+        bm25_path = cache_path / "query_eval_bm25.pkl"
+        weights_path = cache_path / "query_eval_weights.pt"
+        return index_path, embedding_path, bm25_path, weights_path
 
     def save_to_cache(self, cache_path: Path) -> None:
         """Save precomputed embeddings to cache.
@@ -114,35 +116,35 @@ class QueryEval(torch.nn.Module):
         """
         if not cache_path.exists():
             cache_path.mkdir(parents=True)
-        index_path, embedding_path, bm25_path = self._prepare_cache(cache_path)
+        index_path, embedding_path, bm25_path, weights_path = self._prepare_cache(cache_path)
         with open(index_path, "w") as f:
             json.dump(self.doc_id2idx, f)
         torch.save(self.doc_embeddings, embedding_path)
+        torch.save(self.weights, weights_path)
         if self.bm25:
             self.bm25.save(bm25_path)
         logger.info("Saved embeddings to %s", cache_path)
 
-    def load_from_cache(self, cache_path: Path) -> None:
+    @staticmethod
+    def load_from_cache(cache_path: Path, *args, **kwargs) -> 'QueryEval':
         """Load precomputed embeddings from cache.
         Args:
             cache_path: Path to the cache file
         Loads a pandas DataFrame with columns ['doc_id', 'embedding'] from the cache file.
         """
-        if not cache_path.exists() or not cache_path.is_dir():
-            raise ValueError("Cache directory does not exist.")
-        index_path, embedding_path, bm25_path = self._prepare_cache(cache_path)
-        if not index_path.exists():
-            raise ValueError("Index file not found in cache.")
-        if not embedding_path.exists():
-            raise ValueError("Embedding file not found in cache.")
-        if self.bm25 and not bm25_path.exists():
-            raise ValueError("BM25 file not found in cache.")
+        _cls = QueryEval(*args, **kwargs)
+        index_path, embedding_path, bm25_path, weights_path = _cls._prepare_cache(cache_path)
+        if not index_path.exists() or not embedding_path.exists() or not weights_path.exists():
+            return None
+
         with open(index_path, "r") as f:
-            self.doc_id2idx = json.load(f)
-        self.doc_embeddings = torch.load(embedding_path)
-        if self.bm25:
-            self.bm25 = BM25.load(bm25_path)
+            _cls.doc_id2idx = json.load(f)
+        _cls.doc_embeddings = torch.load(embedding_path)
+        _cls.weights = torch.load(weights_path)
+        if bm25_path.exists():
+            _cls.bm25 = BM25.load(bm25_path)
         logger.info("Loaded embeddings from %s", cache_path)
+        return _cls
 
     def score(self,
               queries: Union[str, List[str]],
@@ -187,7 +189,9 @@ class QueryEval(torch.nn.Module):
             for q, d in zip(queries, doc_indices):
                 bm25: BM25 = self.bm25
                 # compute raw bm25 scores for all the documents in the corpus
-                alldocs = torch.tensor(bm25.get_scores(q.split()))
+                q = q.split()
+                q = q if q else [""]
+                alldocs = torch.tensor(bm25.get_scores(q))
                 # send to device
                 alldocs = alldocs.to(self.device).squeeze()
                 # normalise to get "probabilities"

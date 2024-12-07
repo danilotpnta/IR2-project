@@ -6,8 +6,10 @@ import pandas as pd
 import os
 
 
-def load_corpus(dataset_name, source="ir_datasets"):
-    cache_path = os.path.join(os.curdir, "cache", f"{dataset_name}-{source}.pkl")
+def load_corpus(dataset_name: str, source="ir_datasets"):
+    cache_path = os.path.join(os.curdir, "cache", dataset_name)
+    os.makedirs(cache_path, exist_ok=True)
+    cache_path = os.path.join(cache_path, f"{dataset_name}-{source}.pkl")
     if os.path.exists(cache_path):
         print(f"Loading cached documents from {cache_path}")
         with open(cache_path, "rb") as f:
@@ -68,7 +70,9 @@ def load_corpus(dataset_name, source="ir_datasets"):
 
 
 def load_queries(dataset_name, source="ir_datasets"):
-    cache_path = os.path.join(os.curdir, "cache", f"{dataset_name}-queries.pkl")
+    cache_path = os.path.join(os.curdir, "cache", dataset_name)
+    os.makedirs(cache_path, exist_ok=True)
+    cache_path = os.path.join(cache_path, f"{dataset_name}-queries.pkl")
     if os.path.exists(cache_path):
         print(f"Loading cached queries from {cache_path}")
         with open(cache_path, "rb") as f:

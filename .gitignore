@@ -162,3 +162,4 @@ trec-covid-queries.jsonl
 trec-covid-triples.tsv
 cache_plus/
 trec-covid-queries_HF.jsonl
+*.job
