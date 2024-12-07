@@ -24,13 +24,11 @@ setup $PROJECT_ROOT
 cd $PROJECT_ROOT
 
 # parameters
-SCRATCH_DIR=/scratch-shared/$USER
-
 DATASET_PATH=/scratch-shared/scur2850/cpo_output/dataset100/llmt_cpo_inparsplus
-MODEL_NAME=/scratch-shared/scur2850/cpo_output/model_100/checkpoint-75
-OUTPUT_DIR=$SCRATCH_DIR/cpo_eval_ft
-QUERY_EVAL_PATH=$SCRATCH_DIR/cpo_dataset
-BATCH_SIZE=64
+MODEL_NAME=/scratch-shared/scur2850/cpo_output/model/checkpoint-130500/
+OUTPUT_DIR=/scratch-shared/scur2850/cpo_eval130500
+QUERY_EVAL_PATH=/scratch-shared/scur2850/cpo_dataset
+BATCH_SIZE=32
 
 # rest of the script
 srun python -m inpars.cpo_eval \
@@ -38,4 +36,5 @@ srun python -m inpars.cpo_eval \
 --model_name $MODEL_NAME \
 --output_dir $OUTPUT_DIR \
 --query_eval_path $QUERY_EVAL_PATH \
---batch_size $BATCH_SIZE \
+--batch_size $BATCH_SIZE
+

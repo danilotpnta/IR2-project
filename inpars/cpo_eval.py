@@ -22,9 +22,10 @@ def cpo_eval(
         tokenizer: AutoTokenizer,
         query_eval: QueryEval,
         batch_size: int = 256,
-        max_prompt_length: int = 1024,
+        max_prompt_length: int = 4096,
         max_tokens: int = 256,
         dtype: torch.dtype = torch.float16,
+        output_dir: str = "cache"
     ):
     """
     Given a list of prompts and doc_ids, generate queries and evaluate them using QueryEval.
@@ -42,6 +43,7 @@ def cpo_eval(
             "max_tokens": max_tokens,
             "batch_size": batch_size,
             "dtype": dtype,
+            "save_folder": output_dir
         }
         logger.info(f"Using VLLM for inference.")
     else:
@@ -55,6 +57,7 @@ def cpo_eval(
             "max_tokens": max_tokens,
             "batch_size": batch_size,
             "dtype": dtype,
+            "save_folder": output_dir
         }
         logger.info(f"Using HuggingFace model for inference.")
     # Generate queries
@@ -87,19 +90,8 @@ def cpo_eval(
         "min_score": min(scores.values()),
         "max_score": max(scores.values())
     }
-    outputs = {
-        doc_id: {
-            "prompt": prompt,
-            "query": query,
-            "score": score
-        }
-        for doc_id, prompt, query, score in zip(doc_ids, prompts, texts, scores)
-    }
 
-    with open('generator_output.json', "w") as f:
-        json.dump(outputs, f)
-
-    return metrics, scores
+    return metrics, scores, generator_output
 
 if __name__ == '__main__':
     logging.basicConfig(level=logging.INFO)
@@ -153,7 +145,7 @@ if __name__ == '__main__':
     for data in dataset:
         prompts.append(data["prompt"])
         doc_ids.append(data["target_doc_id"])
-    metrics, scores = cpo_eval(
+    metrics, scores, texts = cpo_eval(
         prompts=prompts,
         doc_ids=doc_ids,
         model=model,
@@ -161,6 +153,7 @@ if __name__ == '__main__':
         query_eval=query_eval,
         batch_size=args.batch_size,
         dtype=torch.bfloat16,
+        output_dir=args.output_dir
     )
     # save output
     output_path = Path(args.output_dir)
@@ -168,7 +161,17 @@ if __name__ == '__main__':
         output_path.mkdir(parents=True)
     with open(output_path / "scores.json", "w") as f:
         json.dump(scores, f)
+    print(f"Scores saved to {output_path / 'scores.json'}")
     with open(output_path / "metrics.json", "w") as f:
         json.dump(metrics, f)
     print(f"Metrics: {metrics}")
-    print(f"Scores saved to {output_path / 'scores.json'}")
+    with open(output_path / "doc_text_score_triples.json", "w") as f:
+        json.dump({
+            data["target_doc_id"]: {
+                "document": data["target_doc_text"],
+                "query": texts[data["target_doc_id"]],
+                "score": scores[data["target_doc_id"]]
+            } for data in dataset
+        }, f, indent=2)
+    print(f"document-query-score triples saved to {output_path / 'doc_text_score_triples.json'}")
+

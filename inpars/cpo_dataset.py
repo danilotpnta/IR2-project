@@ -291,6 +291,8 @@ def generate_queries(
         "max_new_tokens": max_tokens,
         "logprobs": logprobs,
     }
+    device=torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+    model.to(device)
     logger.info("Sampling params: %s", sampling_params)
     # make dataloaders
     loader_docid = DataLoader(doc_ids[len(generations):], batch_size=batch_size)
@@ -310,7 +312,7 @@ def generate_queries(
             padding=True,
             truncation=True,
             return_tensors="pt",
-        ).to(torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu"))
+        ).to(device)
         logger.info("Tokenized prompts")
         # generate queries
         outputs = model.generate(
