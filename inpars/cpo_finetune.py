@@ -36,10 +36,6 @@ class ModelArguments:
     peft_config_path: str = field(
         default=None, metadata={"help": "Path to peft config file"}
     )
-    resume_from_checkpoint: str | bool | None = field(
-        default=None,
-        metadata={"help": "If provided, will try to resume from this checkpoint path"},
-    )
 
     def __post_init__(self):
         self.config = AutoConfig.from_pretrained(self.model_name_or_path)
@@ -183,7 +179,7 @@ def train(
         f"Number of trainable parameters: {count_parameters(model)/10**6:0.1f}M"
     )
     # train
-    trainer.train(resume_from_checkpoint=model_args.resume_from_checkpoint)
+    trainer.train(resume_from_checkpoint=cpo_config.resume_from_checkpoint)
     # save model
     trainer.save_model()
 

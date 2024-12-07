@@ -3,7 +3,6 @@
 setup() {
 	module purge
 	
-	module load 2023
 	module load 2024
 	module load Java/21.0.2
     module load CUDA/12.6.0
@@ -16,7 +15,9 @@ setup() {
 	# export HF_TOKEN=
 	
 	# The pretrained MonoT5 models are >22GB, so cache in scratch-shared
-	export HF_HOME="/scratch-shared/InPars-data/HF_Cache"
+	# export HF_HOME="/scratch-shared/InPars-data/HF_Cache"
+    export HF_HOME="/scratch-shared/$USER"
+
 
 	echo "Environment setup complete."
 	echo "Python version: $(python --version)"
