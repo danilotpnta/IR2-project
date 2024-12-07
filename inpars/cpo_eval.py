@@ -74,8 +74,7 @@ def cpo_eval(
         texts.append(text)
 
     if use_wandb:
-        wandb.log({"num_queries": len(texts)})
-        wandb.log("Generated queries", {"examples": texts[:5]})
+        wandb.log({"num_queries": len(texts), "examples": texts[:5]})
 
     # Evaluate queries
     scores = {}
@@ -123,6 +122,8 @@ if __name__ == '__main__':
                         help="Maximum tokens to generate for each query")
     parser.add_argument("--batch_size", type=int, default=256,
                         help="Batch size for the query evaluator")
+    parser.add_argument("--dtype", type=str, default="torch.bfloat16",
+                        help="Data type for inference")
     parser.add_argument("--use_vllm", action="store_true",
                         help="Use VLLM for inference")
     parser.add_argument("--use_wandb", action="store_true",
@@ -130,17 +131,18 @@ if __name__ == '__main__':
     parser.add_argument("--run_name", type=str, default="cpo_eval",
                         help="Name of the run so we can identify it later")
     args = parser.parse_args()
+    # change dtype to torch.dtype
+    args.dtype = torch.dtype(args.dtype)
     logger.info("parsed arguments\n%s", args)
     # wandb
     if args.use_wandb:
         import wandb
         wandb.init(project="cpo_eval", config=args, name=args.run_name)
-
     # load model and tokenizer if needed
     if args.use_vllm:
         model = args.model_name
     else:
-        model = AutoModelForCausalLM.from_pretrained(args.model_name)
+        model = AutoModelForCausalLM.from_pretrained(args.model_name, dtype=args.dtype)
         tokenizer = AutoTokenizer.from_pretrained(args.model_name, padding_side='left')
         if tokenizer.pad_token_id is None:
             tokenizer.pad_token = tokenizer.eos_token
@@ -183,7 +185,7 @@ if __name__ == '__main__':
         max_prompt_length=args.max_prompt_length,
         max_tokens=args.max_tokens,
         batch_size=args.batch_size,
-        dtype=torch.float16
+        dtype=args.dtype
     )
     # save output
     output_path = Path(args.output_dir)
@@ -204,4 +206,5 @@ if __name__ == '__main__':
             } for data in dataset
         }, f, indent=2)
     print(f"document-query-score triples saved to {output_path / 'doc_text_score_triples.json'}")
-
+    if args.use_wandb:
+        wandb.finish()

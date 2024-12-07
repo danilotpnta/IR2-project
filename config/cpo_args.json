@@ -1,24 +1,27 @@
 {
     "model_name_or_path": "meta-llama/Meta-Llama-3.1-8B-Instruct",
     "model_kwargs": {
-        "device_map": "auto"
+        "device_map": "auto",
+        "max_seq_length": 4096,
+        "dtype":  null
     },
     "use_wandb": true,
     "cpo_data_path": {
-        "msmarco-dataset/train": "/scratch-shared/scur2850/cpo_dataset/llmt_preference_Meta-Llama-3.1-8B-Instruct-FP8_msmarco-document-train_100.json"
+        "msmarco-dataset/train": "/scratch-shared/scur2850/cpo_dataset/llmt_preference_Meta-Llama-3.1-8B-Instruct-FP8_msmarco-document-train_100000.json"
     },
-    "output_dir": "/scratch-shared/scur2850/cpo_output/model_100",
-    "max_source_length": 8192,
+    "output_dir": "/scratch-shared/scur2850/cpo_output/model",
+    "max_source_length": 4096,
     "preprocessing_num_workers": 16,
     "overwrite_cache": true,
     "streaming": true,
-    "max_length": 8192,
-    "max_prompt_length": 4096,
+    "max_length": 4096,
+    "max_prompt_length": 2048,
     "beta": 0.1,
     "cpo_alpha": 1.0,
     "do_train": true,
     "fp16": false,
     "bf16": true,
-    "dataset_cache": "/scratch-shared/scur2850/cpo_output/dataset100",
-    "peft_config_path": "/home/scur2850/IR2-project/config/peft_config.json"
+    "dataset_cache": "/scratch-shared/scur2850/cpo_output/dataset100000",
+    "peft_config_path": "/home/scur2577/IR2-project/config/peft_config.json",
+    "resume_from_checkpoint": null
 }
