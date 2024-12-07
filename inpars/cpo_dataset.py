@@ -2,6 +2,7 @@ import json
 import logging
 from pathlib import Path
 from typing import Dict, List, Optional
+import re
 
 import ir_datasets
 import pandas as pd
@@ -16,7 +17,7 @@ from dataclasses import dataclass
 
 from .prompt import Prompt
 from .query_eval import QueryEval
-from .utils import get_documents, get_optimal_cpu_count, get_prompts, get_queries
+from .utils import get_documents, get_optimal_process_count, get_prompts, get_queries
 
 logger = logging.getLogger(__name__)
 
@@ -58,11 +59,12 @@ ALLOWED_DATASETS = {
 
 
 def get_corpus(dataset_name: str):
-    if (
-        dataset_name not in ALLOWED_DATASETS
-        and f"beir/{dataset_name}" not in ALLOWED_DATASETS
-    ):
-        raise ValueError(f"Dataset {dataset_name} not in the list of allowed datasets.")
+    if dataset_name not in ALLOWED_DATASETS:
+        dataset_name = f"beir/{dataset_name}"
+        if dataset_name not in ALLOWED_DATASETS:
+            raise ValueError(
+                f"Dataset {dataset_name} not in the list of allowed datasets."
+            )
 
     return ir_datasets.load(f"{dataset_name}{(ALLOWED_DATASETS[dataset_name]) or ''}")
 
@@ -72,7 +74,7 @@ class DataConfig:
     cpo_data_path: Dict[str, str]
     max_train_samples: Optional[int] = None
     max_source_length: int = 8192
-    preprocessing_num_workers: int = get_optimal_cpu_count()
+    preprocessing_num_workers: int = get_optimal_process_count()
     overwrite_cache: bool = True
     streaming: bool = False
     dataset_cache: Optional[str] = None
@@ -513,17 +515,14 @@ def build_cpo_dataset(
         It will be saved as a JSON file,
         called `llmt_preference_{model_name}_{dataset_name}_{num_samples}.json`.
     """
-    if not dataset_name.startswith("msmarco-document"):
-        raise NotImplementedError("Only MS-MARCO is supported for now.")
 
-    if "/" in model_name:
-        _model_name = model_name.split("/")[-1]
-
+    output_dir = output_dir / re.sub(r"[^a-zA-Z0-9]", "_", dataset_name)
+    output_dir.mkdir(parents=True, exist_ok=True)
     output_path = (
-        output_dir
-        / f"llmt_preference_{_model_name}_{dataset_name}{f'_{num_samples}' if num_samples else ''}.json"
+        output_dir / f"llmt_preference_{model_name.split("/")[-1]}_{num_samples}.json"
     )
-    dataset_path = output_dir / f"combined_data_{dataset_name}.csv"
+
+    dataset_path = output_dir / "combined_data.csv"
 
     if dataset_path.exists():
         dataset = pd.read_csv(dataset_path)
@@ -535,16 +534,16 @@ def build_cpo_dataset(
         dataset = get_corpus(dataset_name)
         documents = {}
         queries = {}
-        qd_map = {}
+        dq_map = {}
 
         # Query, Document, Relevance, Iteration
         for query_id, doc_id, rel, _ in tqdm(
             dataset.qrels_iter(), total=dataset.qrels_count(), desc="Loading qrels"
         ):
-            if rel == 1:
+            if rel > 0:
                 documents[doc_id] = None
                 queries[query_id] = None
-                qd_map[query_id] = doc_id
+                dq_map[doc_id] = query_id
 
         # load documents
         documents = get_documents(dataset, documents, max_workers=max_workers)
@@ -553,11 +552,11 @@ def build_cpo_dataset(
         queries = get_queries(dataset, queries, max_workers=max_workers)
 
         q_ids, q_texts, d_ids, d_texts = [], [], [], []
-        for q_id, q_text in queries.items():
-            q_ids.append(q_id)
-            q_texts.append(q_text)
-            d_ids.append(qd_map[q_id])
-            d_texts.append(documents[qd_map[q_id]])
+        for doc_id, doc_text in documents.items():
+            d_ids.append(doc_id)
+            d_texts.append(doc_text)
+            q_ids.append(dq_map[doc_id])
+            q_texts.append(queries[dq_map[doc_id]])
         dataset = pd.DataFrame(
             {
                 "query_id": q_ids,
@@ -598,8 +597,10 @@ def build_cpo_dataset(
     # load the dataset
     if not has_docs_queries:
         # sample num_samples document-query pairs from the dataframe
-        samples = dataset.sample(
-            num_samples, replace=False, random_state=seed
+        samples = (
+            dataset
+            if num_samples > len(dataset)
+            else dataset.sample(num_samples, replace=False, random_state=seed)
         )  # .dropna()
 
         output["doc_ids"] = samples["doc_id"].tolist()
@@ -817,12 +818,13 @@ if __name__ == "__main__":
     parser.add_argument("--max_doc_length", type=int, default=1024)
     parser.add_argument("--max_query_length", type=int, default=64)
     parser.add_argument("--max_prompt_length", type=int, default=8192)
-    parser.add_argument("--max_workers", type=int, default=get_optimal_cpu_count())
+    parser.add_argument("--max_workers", type=int, default=get_optimal_process_count())
     parser.add_argument("--max_new_token", type=int, default=32)
     parser.add_argument("--student_use_fp16", action="store_true")
     parser.add_argument("--teacher_use_fp16", action="store_true")
     parser.add_argument("--use_vllm", action="store_true")
     args = parser.parse_args()
+    logging.debug(f"Arguments: {args}")
 
     build_cpo_dataset(
         model_name=args.model_name,
@@ -840,4 +842,5 @@ if __name__ == "__main__":
         max_prompt_length=args.max_prompt_length,
         max_new_token=args.max_new_token,
         use_vllm=args.use_vllm,
+        max_workers=args.max_workers,
     )

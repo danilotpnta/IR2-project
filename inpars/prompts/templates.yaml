@@ -144,6 +144,11 @@ inparsplus-fever:
   template: |
     Document: {document}
     Query: Is it true that {query}
+inparsplus-climate-fever:
+  mode: dynamic_v2
+  template: |
+    Document: {document}
+    Query: Is it true that {query}
 
 inparsplus-msmarco-document:
   mode: dynamic_v2

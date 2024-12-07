@@ -94,13 +94,18 @@ class TRECRun:
         self.df.to_csv(path, index=False, sep="\t", header=False, float_format="%.15f")
 
 
-def _process_map_q(q):
-    return q.query_id, ftfy.fix_text(q.text)
+def _process_map_q(query):
+    return query.query_id, ftfy.fix_text(query.text)
 
 
-def _process_map_d(d):
-    id, d = d
-    return id, ftfy.fix_text(d.title + " " + d.body)
+def _process_map_d(document):
+    # In case of MSMarco
+    d = (
+        ftfy.fix_text(document.title + " " + document.body)
+        if hasattr(document, "body")
+        else ftfy.fix_text(document.text)
+    )
+    return document.doc_id, d
 
 
 def _process_map_p(document, doc_id, prompter, n_examples=3):
@@ -113,7 +118,7 @@ def count_parameters(model, predicate=lambda p: p.requires_grad):
     return params
 
 
-def get_optimal_cpu_count() -> int:
+def get_optimal_process_count() -> int:
     platform, pyver = sys.platform, sys.version_info.minor
     if pyver >= 13:
         return os.process_cpu_count() - 1
@@ -129,17 +134,20 @@ def get_optimal_cpu_count() -> int:
 
 def get_documents(dataset, documents, max_workers=1):
     if max_workers == 1:
-        for doc_id, doc in tqdm(
-            dataset.docs_store().get_many(documents.keys()).items(),
+        for doc in tqdm(
+            dataset.docs_store().get_many_iter(documents.keys()),
             total=len(documents),
             desc="Loading documents",
         ):
-            documents[doc_id] = ftfy.fix_text(doc.title + " " + doc.body)
-
+            documents[doc.doc_id] = (
+                ftfy.fix_text(doc.title + " " + doc.body)
+                if hasattr(doc, "body")
+                else ftfy.fix_text(doc.text)
+            )
     else:
         _docs = process_map(
             _process_map_d,
-            dataset.docs_store().get_many(documents.keys()).items(),
+            dataset.docs_store().get_many_iter(documents.keys()),
             chunksize=128,
             total=len(documents),
             desc="Loading documents",
@@ -151,11 +159,10 @@ def get_documents(dataset, documents, max_workers=1):
 
 def get_queries(dataset, queries, max_workers=1):
     if max_workers == 1:
-        for query_id in tqdm(
+        for query in tqdm(
             dataset.queries_iter(), total=len(queries), desc="Loading queries"
         ):
-            query_id, text = query_id
-            queries[query_id] = ftfy.fix_text(text)
+            queries[query.query_id] = ftfy.fix_text(query.text)
 
     else:
         _queries = process_map(
@@ -176,7 +183,9 @@ def get_prompts(output, prompt, num_examples=3, max_workers=1):
 
     prompts = []
     if max_workers == 1:
-        for _id, doc in tqdm(zip(ids, documents), desc="Generating prompts"):
+        for _id, doc in tqdm(
+            zip(ids, documents), desc="Generating prompts", total=len(documents)
+        ):
             prompts.append((_id, prompt.build(doc, n_examples=num_examples)))
     else:
         prompts = process_map(
