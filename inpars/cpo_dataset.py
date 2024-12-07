@@ -290,6 +290,7 @@ def generate_queries(
         "temperature": temperature,
         "max_new_tokens": max_tokens,
         "logprobs": logprobs,
+        "stop_strings": stop,
     }
     device=torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
     model.to(device)
