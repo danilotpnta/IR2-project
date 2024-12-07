@@ -1,29 +1,70 @@
 import json
 import logging
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 
-import ftfy
 import ir_datasets
-import numpy as np
 import pandas as pd
 import torch
 from torch.utils.data import DataLoader
 from tqdm import tqdm
-from tqdm.contrib.concurrent import process_map
 from transformers import AutoModelForCausalLM, AutoTokenizer
 from trl import CPOConfig
 from trl.trainer.utils import pad_to_length
 from datasets import concatenate_datasets, Dataset, DatasetInfo
 from dataclasses import dataclass
 
-from inpars.utils import _process_map_p
-
 from .prompt import Prompt
 from .query_eval import QueryEval
-from .utils import _process_map_d, _process_map_q, get_optimal_cpu_count
+from .utils import get_documents, get_optimal_cpu_count, get_prompts, get_queries
 
 logger = logging.getLogger(__name__)
+
+
+# TODO: Expand this with the whole gamma of datasets in ir_datasets
+# Dictionary mapping to allowed training datasets where the values represent the designated split to use for training (None means that the dataset is not split)
+ALLOWED_DATASETS = {
+    "beir/arguana": None,
+    "beir/climate-fever": None,
+    "beir/cquadupstack/android": None,
+    "beir/cquadupstack/english": None,
+    "beir/cquadupstack/gaming": None,
+    "beir/cquadupstack/gis": None,
+    "beir/cquadupstack/mathematica": None,
+    "beir/cquadupstack/physics": None,
+    "beir/cquadupstack/programmers": None,
+    "beir/cquadupstack/stats": None,
+    "beir/cquadupstack/tex": None,
+    "beir/cquadupstack/unix": None,
+    "beir/cquadupstack/webmasters": None,
+    "beir/cquadupstack/wordpress": None,
+    "beir/dbpedia-entity": "/dev",
+    "beir/fever": "/train",
+    "beir/fiqa": "/train",
+    "beir/hotpotqa": "/train",
+    "beir/msmarco": "/train",
+    "beir/nfcorpus": "/train",
+    "beir/nq": None,
+    "beir/quora": "/dev",
+    "beir/scidocs": None,
+    "beir/scifact": "/train",
+    "beir/trec-covid": None,
+    "beir/webis-touche2020": "/v2",
+    "msmarco-document": "/train",
+    "msmarco-document-v2": "/train",
+    "msmarco-passage": "/train",
+    "msmarco-passage-v2": "/train",
+}
+
+
+def get_corpus(dataset_name: str):
+    if (
+        dataset_name not in ALLOWED_DATASETS
+        and f"beir/{dataset_name}" not in ALLOWED_DATASETS
+    ):
+        raise ValueError(f"Dataset {dataset_name} not in the list of allowed datasets.")
+
+    return ir_datasets.load(f"{dataset_name}{(ALLOWED_DATASETS[dataset_name]) or ''}")
 
 
 @dataclass
@@ -58,17 +99,25 @@ def load_cpo_dataset(data_args: DataConfig, train_args: CPOConfig, tokenizer):
 
         if example[TEACHER_SCORE_KEY] > example[STUDENT_SCORE_KEY]:
             highest_score_index = (
-                TEACHER_OUTPUT_KEY if example[TEACHER_SCORE_KEY] > example[REF_SCORE_KEY] else REF_OUTPUT_KEY
+                TEACHER_OUTPUT_KEY
+                if example[TEACHER_SCORE_KEY] > example[REF_SCORE_KEY]
+                else REF_OUTPUT_KEY
             )
             lowest_score_index = (
-                STUDENT_OUTPUT_KEY if example[STUDENT_SCORE_KEY] < example[REF_SCORE_KEY] else REF_OUTPUT_KEY
+                STUDENT_OUTPUT_KEY
+                if example[STUDENT_SCORE_KEY] < example[REF_SCORE_KEY]
+                else REF_OUTPUT_KEY
             )
         else:
             highest_score_index = (
-                STUDENT_OUTPUT_KEY if example[STUDENT_SCORE_KEY] > example[REF_SCORE_KEY] else REF_OUTPUT_KEY
+                STUDENT_OUTPUT_KEY
+                if example[STUDENT_SCORE_KEY] > example[REF_SCORE_KEY]
+                else REF_OUTPUT_KEY
             )
             lowest_score_index = (
-                TEACHER_OUTPUT_KEY if example[TEACHER_SCORE_KEY] < example[REF_SCORE_KEY] else REF_OUTPUT_KEY
+                TEACHER_OUTPUT_KEY
+                if example[TEACHER_SCORE_KEY] < example[REF_SCORE_KEY]
+                else REF_OUTPUT_KEY
             )
 
         # Assigning the corresponding sentences
@@ -116,10 +165,7 @@ def load_cpo_dataset(data_args: DataConfig, train_args: CPOConfig, tokenizer):
     train_datasets, eval_datasets, test_datasets = None, None, None
     dataset_path = Path(data_args.dataset_cache) / "llmt_cpo_inparsplus"
     if train_args.do_train:
-        if (
-            data_args.dataset_cache
-            and dataset_path.exists()
-        ):
+        if data_args.dataset_cache and dataset_path.exists():
             train_datasets = Dataset.load_from_disk(dataset_path)
             return train_datasets, eval_datasets, test_datasets
 
@@ -151,7 +197,9 @@ def load_cpo_dataset(data_args: DataConfig, train_args: CPOConfig, tokenizer):
                         )
                     else:
                         train_dataset = train_dataset.map(
-                            cpo_prompt_function, batched=True, batch_size=1,
+                            cpo_prompt_function,
+                            batched=True,
+                            batch_size=1,
                         )
                 processed_datasets.append(train_dataset)
 
@@ -162,9 +210,16 @@ def load_cpo_dataset(data_args: DataConfig, train_args: CPOConfig, tokenizer):
 
 
 def continue_from_checkpoint(
-    output_path: Path, dataset_name: str, num_samples: Optional[int] = None
+    output_path: Path, dataset_name: str, num_samples: Optional[int] = None, **metadata
 ):
-    output = {"dataset_name": dataset_name, "doc_ids": [], "data": {}}
+    output = {
+        "dataset_name": dataset_name,
+        "doc_ids": [],
+        "data": {},
+        "metadata": dict(
+            dataset_name=dataset_name, num_samples=num_samples, **metadata
+        ),
+    }
     # flags to continue from where we left off
     has_docs_queries = False
     has_prompts = False
@@ -246,7 +301,7 @@ def generate_queries(
     max_tokens=256,
     logprobs=None,
     stop=["\n", "Example", "Document:"],
-    dtype='auto',
+    dtype="auto",
     **kwargs,
 ):
     """
@@ -292,12 +347,12 @@ def generate_queries(
         "logprobs": logprobs,
         "stop_strings": stop,
     }
-    device=torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+    device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
     model.to(device)
     logger.info("Sampling params: %s", sampling_params)
     # make dataloaders
-    loader_docid = DataLoader(doc_ids[len(generations):], batch_size=batch_size)
-    loader_prompts = DataLoader(prompts[len(generations):], batch_size=batch_size)
+    loader_docid = DataLoader(doc_ids[len(generations) :], batch_size=batch_size)
+    loader_prompts = DataLoader(prompts[len(generations) :], batch_size=batch_size)
     logger.info("Starting generation for %d document batches", len(loader_docid))
     for d_ids, p in tqdm(
         zip(loader_docid, loader_prompts),
@@ -313,7 +368,7 @@ def generate_queries(
             padding=True,
             truncation=True,
             return_tensors="pt",
-            return_attention_mask=True
+            return_attention_mask=True,
         ).to(device)
         logger.info("Tokenized prompts")
         # generate queries
@@ -330,17 +385,14 @@ def generate_queries(
         outputs = outputs[:, inputs["input_ids"].shape[1] :]
         # decode
         outputs = pad_to_length(
-            outputs,
-            length=max_tokens,
-            pad_value=tokenizer.pad_token_id
+            outputs, length=max_tokens, pad_value=tokenizer.pad_token_id
         )
         outputs_decoded = tokenizer.batch_decode(outputs, skip_special_tokens=True)
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug("Decoded queries\n%s", "\n".join(outputs_decoded))
         # Save the outputs.
         generations |= {
-            d_id: (output, None, None)
-            for d_id, output in zip(d_ids, outputs_decoded)
+            d_id: (output, None, None) for d_id, output in zip(d_ids, outputs_decoded)
         }
 
         with open(save_file, "w") as f:
@@ -388,7 +440,7 @@ def build_cpo_dataset(
     output_dir: Path,
     num_samples: int,
     prompt_template_name: str,
-    dataset_name: str = "msmarco-document/train",
+    dataset_name: str = "msmarco-document",
     num_examples: int = 3,
     seed: int = 42,
     student_dtype="auto",
@@ -398,7 +450,9 @@ def build_cpo_dataset(
     max_prompt_length: int = 1024,
     max_new_token: int = 16,
     query_eval: Optional[QueryEval] = None,
+    max_workers: int = 1,
     use_vllm: bool = False,
+    deterministic: bool = True,
 ):
     """
     TODO: update the docstring
@@ -446,8 +500,8 @@ def build_cpo_dataset(
     ```
 
     Parameters:
-    - dataset_name: str
-        The name of the dataset to build. Currently we only support MS-MARCO.
+    - dataset_name: str | list[str]
+        The name of the dataset to build. Can also be a list of dataset names in which case a mixed dataset will be built.
     - num_samples: Optional[int]
         The number of samples to build. If None, the entire dataset will be built.
     - num_examples: int
@@ -467,9 +521,9 @@ def build_cpo_dataset(
 
     output_path = (
         output_dir
-        / f"llmt_preference_{_model_name}_{dataset_name.replace('/','-')}{f'_{num_samples}' if num_samples else ''}.json"
+        / f"llmt_preference_{_model_name}_{dataset_name}{f'_{num_samples}' if num_samples else ''}.json"
     )
-    dataset_path = output_dir / "combined_data.csv"
+    dataset_path = output_dir / f"combined_data_{dataset_name}.csv"
 
     if dataset_path.exists():
         dataset = pd.read_csv(dataset_path)
@@ -478,7 +532,7 @@ def build_cpo_dataset(
         # make a dataframe of query_id, doc_id, document, query.
         # this is unavoidable because we keep using the queries and documents in pairs
         # and we need to sample from the entire dataset for the examples as well.
-        dataset = ir_datasets.load(dataset_name)
+        dataset = get_corpus(dataset_name)
         documents = {}
         queries = {}
         qd_map = {}
@@ -493,37 +547,10 @@ def build_cpo_dataset(
                 qd_map[query_id] = doc_id
 
         # load documents
-        # for doc_id, doc in tqdm(
-        #     dataset.docs_store().get_many(documents.keys()).items(), total=len(documents), desc="Loading documents"
-        # ):
-        #     # NOTE: body is too long (avg 1000 words) so we only use title
-        #     documents[doc_id] = ftfy.fix_text(doc.title + " " + doc.body)
+        documents = get_documents(dataset, documents, max_workers=max_workers)
 
-        _docs = process_map(
-            _process_map_d,
-            dataset.docs_store().get_many(documents.keys()).items(),
-            chunksize=128,
-            total=len(documents),
-            desc="Loading documents",
-        )
-        documents = {doc_id: doc for doc_id, doc in _docs}
-        del _docs
-
-        # for query_id in tqdm(
-        #     dataset.queries_iter(), total=len(queries), desc="Loading queries"
-        # ):
-        #     query_id, text = query_id
-        #     queries[query_id] = ftfy.fix_text(text)
-        # convert to dataframe
-        _queries = process_map(
-            _process_map_q,
-            dataset.queries_iter(),
-            chunksize=128,
-            total=len(queries),
-            desc="Loading queries",
-        )
-        queries = {query_id: query for query_id, query in _queries}
-        del _queries
+        # load queries
+        queries = get_queries(dataset, queries, max_workers=max_workers)
 
         q_ids, q_texts, d_ids, d_texts = [], [], [], []
         for q_id, q_text in queries.items():
@@ -552,7 +579,21 @@ def build_cpo_dataset(
         has_ref_scores,  # step 8
         has_teacher_scores,  # step 9
         has_student_scores,  # step 10
-    ) = continue_from_checkpoint(output_path, dataset_name, num_samples)
+    ) = continue_from_checkpoint(
+        output_path,
+        dataset_name,
+        num_samples,
+        model_name=model_name,
+        teacher_model=teacher_model,
+        prompt_template_name=prompt_template_name,
+        num_examples=num_examples,
+        max_doc_length=max_doc_length,
+        max_query_length=max_query_length,
+        max_prompt_length=max_prompt_length,
+        max_new_token=max_new_token,
+        seed=seed,
+        deterministic=deterministic,
+    )
 
     # load the dataset
     if not has_docs_queries:
@@ -584,36 +625,18 @@ def build_cpo_dataset(
             .sample(num_examples * 100)
             .to_numpy()
             .tolist(),  # maybe we just want to filter out some random population
-            tokenizer=None,  # needs to be replaced for each model
+            tokenizer=AutoTokenizer.from_pretrained(
+                model_name
+            ),  # we can use the student tokenizer here
             max_doc_length=max_doc_length,
             max_query_length=max_query_length,
             max_prompt_length=max_prompt_length,
             max_new_token=max_new_token,
-            deterministic=True,
+            deterministic=deterministic,
         )
-
-        # load tokenizer NOTE: this only works if the student and the teacher have the same tokenizer
-        tokenizer = AutoTokenizer.from_pretrained(model_name)
-        # build prompter
-        prompt.tokenizer = tokenizer
 
         # # DynamicPromptV2
-        # for doc_id, data in tqdm(output["data"].items(), desc="Generating prompts"):
-        #     data["prompt"] = prompt.build(
-        #         data["target_doc_text"], n_examples=num_examples
-        #     )
-        documents = [data["target_doc_text"] for data in output["data"].values()]
-        ids = [doc_id for doc_id in output["data"]]
-        prompts = process_map(
-            _process_map_p,
-            documents,
-            ids,
-            [prompt] * len(documents),
-            [num_examples] * len(documents),
-            chunksize=128,
-            total=len(documents),
-            desc="Generating prompts",
-        )
+        prompts = get_prompts(output, prompt, num_examples, max_workers=max_workers)
 
         for doc_id, p in prompts:
             output["data"][doc_id]["prompt"] = p
@@ -786,13 +809,15 @@ if __name__ == "__main__":
         type=str,
         help="Prompt template name",
         default="inparsplus",
+        choices=["inparsplus", "inpars", "promptagator"],
     )
-    parser.add_argument("--dataset_name", type=str, default="msmarco-document/train")
+    parser.add_argument("--dataset_name", type=str, default="msmarco-document")
     parser.add_argument("--num_examples", type=int, default=2)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--max_doc_length", type=int, default=1024)
     parser.add_argument("--max_query_length", type=int, default=64)
     parser.add_argument("--max_prompt_length", type=int, default=8192)
+    parser.add_argument("--max_workers", type=int, default=get_optimal_cpu_count())
     parser.add_argument("--max_new_token", type=int, default=32)
     parser.add_argument("--student_use_fp16", action="store_true")
     parser.add_argument("--teacher_use_fp16", action="store_true")

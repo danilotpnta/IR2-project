@@ -126,7 +126,7 @@ class QueryEval(torch.nn.Module):
         logger.info("Saved embeddings to %s", cache_path)
 
     @staticmethod
-    def load_from_cache(cache_path: Path, *args, **kwargs) -> 'QueryEval':
+    def load_from_cache(cache_path: Path, *args, **kwargs) -> 'QueryEval' | None:
         """Load precomputed embeddings from cache.
         Args:
             cache_path: Path to the cache file

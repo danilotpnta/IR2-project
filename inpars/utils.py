@@ -6,6 +6,7 @@ import ftfy
 import requests
 import pandas as pd
 from tqdm.auto import tqdm
+from tqdm.contrib.concurrent import process_map
 
 PREBUILT_RUN_URL = "https://huggingface.co/datasets/unicamp-dl/beir-runs/resolve/main/bm25/run.beir-v1.0.0-{dataset}-flat.trec"
 RUNS_CACHE_FOLDER = os.environ["HOME"] + "/.cache/inpars"
@@ -112,7 +113,7 @@ def count_parameters(model, predicate=lambda p: p.requires_grad):
     return params
 
 
-def get_optimal_cpu_count():
+def get_optimal_cpu_count() -> int:
     platform, pyver = sys.platform, sys.version_info.minor
     if pyver >= 13:
         return os.process_cpu_count() - 1
@@ -124,3 +125,70 @@ def get_optimal_cpu_count():
         return os.cpu_count(logical=False)
     else:
         return 1
+
+
+def get_documents(dataset, documents, max_workers=1):
+    if max_workers == 1:
+        for doc_id, doc in tqdm(
+            dataset.docs_store().get_many(documents.keys()).items(),
+            total=len(documents),
+            desc="Loading documents",
+        ):
+            documents[doc_id] = ftfy.fix_text(doc.title + " " + doc.body)
+
+    else:
+        _docs = process_map(
+            _process_map_d,
+            dataset.docs_store().get_many(documents.keys()).items(),
+            chunksize=128,
+            total=len(documents),
+            desc="Loading documents",
+            max_workers=max_workers,
+        )
+        documents = {doc_id: doc for doc_id, doc in _docs}
+    return documents
+
+
+def get_queries(dataset, queries, max_workers=1):
+    if max_workers == 1:
+        for query_id in tqdm(
+            dataset.queries_iter(), total=len(queries), desc="Loading queries"
+        ):
+            query_id, text = query_id
+            queries[query_id] = ftfy.fix_text(text)
+
+    else:
+        _queries = process_map(
+            _process_map_q,
+            dataset.queries_iter(),
+            chunksize=128,
+            total=len(queries),
+            desc="Loading queries",
+            max_workers=max_workers,
+        )
+        queries = {query_id: query for query_id, query in _queries}
+    return queries
+
+
+def get_prompts(output, prompt, num_examples=3, max_workers=1):
+    documents = [data["target_doc_text"] for data in output["data"].values()]
+    ids = [doc_id for doc_id in output["data"]]
+
+    prompts = []
+    if max_workers == 1:
+        for _id, doc in tqdm(zip(ids, documents), desc="Generating prompts"):
+            prompts.append((_id, prompt.build(doc, n_examples=num_examples)))
+    else:
+        prompts = process_map(
+            _process_map_p,
+            documents,
+            ids,
+            [prompt] * len(documents),
+            [num_examples] * len(documents),
+            chunksize=128,
+            total=len(documents),
+            desc="Generating prompts",
+            max_workers=max_workers,
+        )
+
+    return prompts
