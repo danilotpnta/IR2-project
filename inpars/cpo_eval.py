@@ -11,7 +11,7 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from .query_eval import QueryEval
 from .cpo_dataset import generate_queries # we should move this.
-from .vllm_inference import generate_queries as vllm_generate
+from . import vllm_inference
 
 logger = logging.getLogger(__name__)
 
@@ -21,11 +21,13 @@ def cpo_eval(
         model: Union[AutoModelForCausalLM, str],
         tokenizer: AutoTokenizer,
         query_eval: QueryEval,
-        batch_size: int = 256,
+        output_dir: str,
+        use_vllm: bool = False,
+        use_wandb: bool = False,
         max_prompt_length: int = 4096,
         max_tokens: int = 256,
+        batch_size: int = 256,
         dtype: torch.dtype = torch.float16,
-        output_dir: str = "cache"
     ):
     """
     Given a list of prompts and doc_ids, generate queries and evaluate them using QueryEval.
@@ -33,8 +35,9 @@ def cpo_eval(
     QueryEval should already be indexed at this point.
     """
     logger.info(f"Generating queries for %d prompts.", len(prompts))
-    if isinstance(model, str):
-        gen_fn = vllm_generate
+
+    if use_vllm:
+        gen_fn = vllm_inference.generate_queries
         generator_kwargs = {
             "prompts": prompts,
             "doc_ids": doc_ids,
@@ -59,7 +62,9 @@ def cpo_eval(
             "dtype": dtype,
             "save_folder": output_dir
         }
-        logger.info(f"Using HuggingFace model for inference.")
+        logger.info(f"Using {type(model)} for inference.")
+    if use_wandb:
+        wandb.config.update(generator_kwargs)
     # Generate queries
     generator_output = gen_fn(**generator_kwargs)
     logger.info(f"Generated %d queries.", len(generator_output))
@@ -68,13 +73,17 @@ def cpo_eval(
         text, _, _ = generator_output[doc_id]
         texts.append(text)
 
+    if use_wandb:
+        wandb.log({"num_queries": len(texts)})
+        wandb.log("Generated queries", {"examples": texts[:5]})
+
     # Evaluate queries
     scores = {}
     for i in tqdm(
         range(0, len(doc_ids), batch_size),
         desc="Evaluating queries",
         unit="batch",
-        total=len(doc_ids),
+        total=len(doc_ids)//batch_size,
     ):
         batch_query = texts[i:i+batch_size]
         batch_doc_id = doc_ids[i:i+batch_size]
@@ -91,6 +100,9 @@ def cpo_eval(
         "max_score": max(scores.values())
     }
 
+    if use_wandb:
+        wandb.log(metrics)
+
     return metrics, scores, generator_output
 
 if __name__ == '__main__':
@@ -105,14 +117,25 @@ if __name__ == '__main__':
                         help="Path to save the output")
     parser.add_argument("--query_eval_path", type=str, required=False,
                         help="Path to query_eval cache")
+    parser.add_argument("--max_prompt_length", type=int, default=4096,
+                        help="Maximum prompt length")
+    parser.add_argument("--max_tokens", type=int, default=256,
+                        help="Maximum tokens to generate for each query")
     parser.add_argument("--batch_size", type=int, default=256,
                         help="Batch size for the query evaluator")
     parser.add_argument("--use_vllm", action="store_true",
                         help="Use VLLM for inference")
     parser.add_argument("--use_wandb", action="store_true",
                         help="Use wandb for logging")
+    parser.add_argument("--run_name", type=str, default="cpo_eval",
+                        help="Name of the run so we can identify it later")
     args = parser.parse_args()
     logger.info("parsed arguments\n%s", args)
+    # wandb
+    if args.use_wandb:
+        import wandb
+        wandb.init(project="cpo_eval", config=args, name=args.run_name)
+
     # load model and tokenizer if needed
     if args.use_vllm:
         model = args.model_name
@@ -154,9 +177,13 @@ if __name__ == '__main__':
         model=model,
         tokenizer=tokenizer if not args.use_vllm else None,
         query_eval=query_eval,
+        output_dir=args.output_dir,
+        use_vllm=args.use_vllm,
+        use_wandb=args.use_wandb,
+        max_prompt_length=args.max_prompt_length,
+        max_tokens=args.max_tokens,
         batch_size=args.batch_size,
-        dtype=torch.bfloat16,
-        output_dir=args.output_dir
+        dtype=torch.float16
     )
     # save output
     output_path = Path(args.output_dir)

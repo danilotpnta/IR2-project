@@ -24,9 +24,11 @@ setup $PROJECT_ROOT
 cd $PROJECT_ROOT
 
 # parameters
+RUN_NAME=cpo_llama8b_msmarco100k_ckpt130500 # change this for each run
+# RUN_NAME=baseline_llama8b # name of the baseline run
 DATASET_PATH=/scratch-shared/scur2850/cpo_output/dataset100/llmt_cpo_inparsplus
 MODEL_NAME=/scratch-shared/scur2850/cpo_output/model/checkpoint-130500/
-OUTPUT_DIR=/scratch-shared/scur2850/cpo_eval_id$SLURM_JOB_ID
+OUTPUT_DIR=/scratch-shared/scur2850/cpo_eval_$RUN_NAME
 QUERY_EVAL_PATH=/scratch-shared/scur2850/cpo_dataset
 BATCH_SIZE=32
 
@@ -37,5 +39,6 @@ srun python -m inpars.cpo_eval \
 --output_dir $OUTPUT_DIR \
 --query_eval_path $QUERY_EVAL_PATH \
 --batch_size $BATCH_SIZE \
---use_vllm
-
+--run_name $RUN_NAME \
+--use_vllm \
+--use_wandb

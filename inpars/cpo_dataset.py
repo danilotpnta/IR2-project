@@ -335,7 +335,8 @@ def generate_queries(
             pad_value=tokenizer.pad_token_id
         )
         outputs_decoded = tokenizer.batch_decode(outputs, skip_special_tokens=True)
-        logger.info("Decoded queries\n%s", "\n".join(outputs_decoded))
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug("Decoded queries\n%s", "\n".join(outputs_decoded))
         # Save the outputs.
         generations |= {
             d_id: (output, None, None)
