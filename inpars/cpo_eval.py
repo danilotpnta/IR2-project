@@ -74,8 +74,7 @@ def cpo_eval(
         texts.append(text)
 
     if use_wandb:
-        wandb.log({"num_queries": len(texts)})
-        wandb.log("Generated queries", {"examples": texts[:5]})
+        wandb.log({"num_queries": len(texts), "examples": texts[:5]})
 
     # Evaluate queries
     scores = {}
