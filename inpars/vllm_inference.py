@@ -11,6 +11,7 @@ SEED = int(os.environ.get("SEED", 42))
 
 logger = logging.getLogger()
 
+
 def generate_queries(
     prompts: list[str],
     doc_ids: list[str],
@@ -25,7 +26,9 @@ def generate_queries(
     max_tokens=256,
     logprobs=None,
     stop=["\n", "Example", "Document:"],
-    dtype='auto',
+    dtype="auto",
+    enable_prefix_caching=True,
+    enable_chunked_prefill=True,
     **kwargs,
 ):
     save_folder = os.path.join(save_folder, model_name)
@@ -57,41 +60,88 @@ def generate_queries(
     # Create an LLM.
     llm = LLM(
         model=model_name,
-        enable_prefix_caching=True,
+        enable_prefix_caching=enable_prefix_caching,
         seed=SEED,
         gpu_memory_utilization=0.95,
         max_model_len=max_prompt_length,
-        enable_chunked_prefill=False,
+        enable_chunked_prefill=enable_chunked_prefill,
         dtype=dtype,
         tensor_parallel_size=GPUS_AVAILABLE,
-        max_num_batched_tokens=max_prompt_length
+        max_num_batched_tokens=max_prompt_length,
     )
-    
-    # llm.llm_engine.use_cached_outputs = True
 
     loader_docid = DataLoader(doc_ids[len(generations) :], batch_size=batch_size)
     loader_prompts = DataLoader(prompts[len(generations) :], batch_size=batch_size)
 
-    for d_ids, p in tqdm(
-        zip(loader_docid, loader_prompts),
-        desc="Generation",
-        unit="batch",
-        total=len(loader_docid),
-    ):
-        # Get the outputs.
-        outputs = llm.generate(p, sampling_params, use_tqdm=use_tqdm_inner)
+    try:
+        for d_ids, p in tqdm(
+            zip(loader_docid, loader_prompts),
+            desc="Generation",
+            unit="batch",
+            total=len(loader_docid),
+        ):
+            # Get the outputs.
+            outputs = llm.generate(p, sampling_params, use_tqdm=use_tqdm_inner)
 
-        # Save the outputs.
-        generations |= {
-            d_id: (
-                output.outputs[0].text,
-                repr(output.outputs[0].logprobs), # this is a bit hard to serialize trivially
-                output.outputs[0].cumulative_logprob,
-            )
-            for d_id, output in zip(d_ids, outputs)
-        }
+            # Save the outputs.
+            generations |= {
+                d_id: (
+                    output.outputs[0].text,
+                    repr(
+                        output.outputs[0].logprobs
+                    ),  # this is a bit hard to serialize trivially
+                    output.outputs[0].cumulative_logprob,
+                )
+                for d_id, output in zip(d_ids, outputs)
+            }
 
-        with open(save_file, "w") as f:
-            json.dump(generations, f)
+            with open(save_file, "w") as f:
+                json.dump(generations, f)
+    except RuntimeError as e:
+        # Catch-all mainly targeting the bug with prefix caching
+        # TODO: Identify this issue eventually.
+        logging.error(f"RuntimeError detected: {e}", stack_info=True)
+        logging.warning(
+            "Retrying again with prefix caching disabled. If this issue persists."
+        )
+
+        llm = LLM(
+            model=model_name,
+            enable_prefix_caching=False,
+            seed=SEED,
+            gpu_memory_utilization=0.95,
+            max_model_len=max_prompt_length,
+            enable_chunked_prefill=False,
+            dtype=dtype,
+            tensor_parallel_size=GPUS_AVAILABLE,
+            max_num_batched_tokens=max_prompt_length,
+        )
+
+        loader_docid = DataLoader(doc_ids[len(generations) :], batch_size=batch_size)
+        loader_prompts = DataLoader(prompts[len(generations) :], batch_size=batch_size)
+
+        for d_ids, p in tqdm(
+            zip(loader_docid, loader_prompts),
+            desc="Generation",
+            unit="batch",
+            total=len(loader_docid),
+        ):
+            # Get the outputs.
+            outputs = llm.generate(p, sampling_params, use_tqdm=use_tqdm_inner)
+
+            # Save the outputs.
+            generations |= {
+                d_id: (
+                    output.outputs[0].text,
+                    repr(
+                        output.outputs[0].logprobs
+                    ),  # this is a bit hard to serialize trivially
+                    output.outputs[0].cumulative_logprob,
+                )
+                for d_id, output in zip(d_ids, outputs)
+            }
+
+            with open(save_file, "w") as f:
+                json.dump(generations, f)
 
     return generations

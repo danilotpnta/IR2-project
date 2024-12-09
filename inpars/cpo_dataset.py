@@ -455,6 +455,8 @@ def build_cpo_dataset(
     max_workers: int = 1,
     use_vllm: bool = False,
     deterministic: bool = True,
+    enable_prefix_caching: bool = True,
+    enable_chunked_prefill: bool = True
 ):
     """
     TODO: update the docstring
@@ -660,6 +662,8 @@ def build_cpo_dataset(
                 output_dir,
                 max_prompt_length=max_prompt_length,
                 dtype=teacher_dtype,
+                enable_prefix_caching=enable_prefix_caching,
+                enable_chunked_prefill=enable_chunked_prefill
             )
         else:
             # load model and tokenizer
@@ -823,6 +827,8 @@ if __name__ == "__main__":
     parser.add_argument("--student_use_fp16", action="store_true")
     parser.add_argument("--teacher_use_fp16", action="store_true")
     parser.add_argument("--use_vllm", action="store_true")
+    parser.add_argument("--enable_chunked_prefill", action="store_true")
+    parser.add_argument("--enable_prefix_caching", action="store_true")
     args = parser.parse_args()
     logging.debug(f"Arguments: {args}")
 
