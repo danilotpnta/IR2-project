@@ -608,9 +608,9 @@ def build_cpo_dataset(
         output["doc_ids"] = samples["doc_id"].tolist()
         for row in samples.itertuples():
             output["data"][row.doc_id] = {
-                "target_doc_id": row.doc_id,
+                "target_doc_id": str(row.doc_id),
                 "target_doc_text": str(row.doc_text),
-                "ref_query_id": row.query_id,
+                "ref_query_id": str(row.query_id),
                 "ref_query": row.query_text,
             }
         # checkpoint
