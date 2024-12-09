@@ -20,7 +20,7 @@ class Prompt:
         max_query_length=None,
         max_prompt_length=None,
         max_new_token=16,
-        deterministic=False
+        deterministic=False,
     ):
         self.template = template
         self.examples = examples
@@ -59,19 +59,20 @@ class Prompt:
             document = self.tokenizer.decode(
                 self.tokenizer(
                     document, truncation=True, max_length=self.max_doc_length
-                )["input_ids"], skip_special_tokens=True
+                )["input_ids"],
+                skip_special_tokens=True,
             )
         return document
-
+ 
     def _truncate_max_query_length(self, query):
         if self.max_query_length:
             query = self.tokenizer.decode(
                 self.tokenizer(
                     query, truncation=True, max_length=self.max_query_length
-                )["input_ids"], skip_special_tokens=True
+                )["input_ids"],
+                skip_special_tokens=True,
             )
         return query
-
 
     def check_max_prompt_length(self, prompt):
         if self.max_prompt_length:
@@ -115,6 +116,7 @@ class DynamicPrompt(Prompt):
 
         self.check_max_prompt_length(prompt)
         return prompt
+
 
 class DynamicPromptV2(Prompt):
     def build(self, document, n_examples=3, **dataset_stats) -> str:
@@ -160,7 +162,8 @@ class DynamicPromptV2(Prompt):
                 + self.n_generated_queries * len(query.split())
                 + dlen
                 + self.n_generated_queries * qlen
-                > self.max_prompt_length
+                - self.max_prompt_length_words
+                < 0  # needs to be <0 instead, in case we don't provide a check for max_prompt_length
             ):
                 break
 
@@ -180,7 +183,9 @@ class DynamicPromptV2(Prompt):
         document = self._truncate_max_doc_length(document)
 
         if self.n_generated_queries > 1:
-            prompt += f"{context.format(document=document.strip())}\n{query_str}".rstrip()
+            prompt += (
+                f"{context.format(document=document.strip())}\n{query_str}".rstrip()
+            )
         else:
             prompt += template.format(document=document.strip(), query="").rstrip()
 
