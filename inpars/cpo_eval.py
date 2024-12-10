@@ -48,6 +48,7 @@ def cpo_eval(
             "batch_size": batch_size,
             "dtype": dtype,
             "save_folder": output_dir,
+            "force": True,
         }
         logger.info(f"Using VLLM for inference.")
     else:
@@ -62,10 +63,10 @@ def cpo_eval(
             "batch_size": batch_size,
             "torch_dtype": dtype,
             "save_folder": output_dir,
+            "force": True
         }
         logger.info(f"Using {type(model)} for inference.")
-    if use_wandb:
-        wandb.config.update(generator_kwargs)
+
     # Generate queries
     generator_output = gen_fn(**generator_kwargs)
     logger.info(f"Generated %d queries.", len(generator_output))
@@ -163,17 +164,7 @@ if __name__ == "__main__":
         import wandb
 
         wandb.init(project="cpo_eval", config=args, name=args.run_name)
-    # load model and tokenizer if needed
-    if args.use_vllm:
-        model = args.model_name
-    else:
-        model = AutoModelForCausalLM.from_pretrained(
-            args.model_name, torch_dtype=args.dtype
-        )
-        tokenizer = AutoTokenizer.from_pretrained(args.model_name, padding_side="left")
-        if tokenizer.pad_token_id is None:
-            tokenizer.pad_token = tokenizer.eos_token
-            tokenizer.pad_token_id = tokenizer.eos_token_id
+
     # load dataset
     dataset_paths = args.dataset
     datasets = {}
@@ -189,20 +180,29 @@ if __name__ == "__main__":
             logging.warning(
                 "Support for loading from a combined dataset has not been implemented"
             )
-        datasets[dataset_path.parts[-2:]] = {"dataset": dataset}
+        datasets[dataset_path] = {"dataset": dataset}
     # load query_eval
     if args.query_eval_path and all(Path(qp).exists() for qp in args.query_eval_path):
-        for qp, _, dataset in zip(args.query_eval_path, datasets.items()):
+        for qp, (_, dataset) in zip(args.query_eval_path, datasets.items()):
             dataset["query_eval"] = QueryEval.load_from_cache(qp)
 
-    elif all((Path(qp) / "query_eval_index.json").exists() for qp in dataset_paths):
-        for path in dataset_paths:
-            dataset["query_eval"] = QueryEval.load_from_cache(path)
+    elif all(qp.with_name("query_eval_index.json").exists() for qp in datasets):
+        for path, dataset in datasets.items():
+            dataset["query_eval"] = QueryEval.load_from_cache(path.parent)
 
     else:
+        for path, dataset in datasets.items():
+            print("there")
+            print([f"{dataset}: {datas["query_eval"]}" for dataset, datas in datasets.items()])    
+
+            dataset["query_eval"] = None
+
+    if any(dataset["query_eval"] is None for dataset in datasets.values()):
         # TODO: support query_eval config
         # prepare dataframe for indexing
-        for _, dataset in datasets.items():
+        for dname, dataset in datasets.items():
+            query_eval = QueryEval()
+            print(f"{dname}: {dataset["query_eval"]}")
             corpus = pd.DataFrame(
                 [
                     (data["target_doc_id"], data["target_doc_text"])
@@ -210,10 +210,26 @@ if __name__ == "__main__":
                 ],
                 columns=["doc_id", "text"],
             )
-            dataset["query_eval"] = QueryEval().load_dataset(corpus, args.batch_size)
+            query_eval.load_dataset(corpus, args.batch_size)
+            dataset["query_eval"] = query_eval
+
+    print([f"{dataset}: {datas["query_eval"]}" for dataset, datas in datasets.items()])    
+    
+    # load model and tokenizer if needed
+    if args.use_vllm:
+        model = args.model_name
+    else:
+        model = AutoModelForCausalLM.from_pretrained(
+            args.model_name, torch_dtype=args.dtype
+        )
+        tokenizer = AutoTokenizer.from_pretrained(args.model_name, padding_side="left")
+        if tokenizer.pad_token_id is None:
+            tokenizer.pad_token = tokenizer.eos_token
+            tokenizer.pad_token_id = tokenizer.eos_token_id
 
     for _, dataset in datasets.items():
         # generate queries and evaluate
+        print(_)
         prompts = []
         doc_ids = []
         for data in dataset["dataset"]:

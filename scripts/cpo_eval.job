@@ -26,7 +26,7 @@ cd $PROJECT_ROOT
 # parameters
 RUN_NAME=cpo_llama8b_sci_arg_cf_cov_tou # change this for each run
 # RUN_NAME=baseline_llama8b # name of the baseline run
-DATASET_PATH=(/scratch-shared/scur2577/cpo_dataset/arguana/llmt_preference_Meta-Llama-3.1-8B-Instruct-FP8_10000.json /scratch-shared/scur2577/cpo_dataset/climate_fever/llmt_preference_Meta-Llama-3.1-8B-Instruct-FP8_10000.json /scratch-shared/scur2577/cpo_dataset/scidocs/llmt_preference_Meta-Llama-3.1-8B-Instruct-FP8_10000.json /scratch-shared/scur2577/trec_covid /scratch-shared/scur2577/webis_touche2020/llmt_preference_Meta-Llama-3.1-8B-Instruct-FP8_10000.json)
+DATASET_PATH=(/scratch-shared/scur2577/cpo_dataset/arguana/llmt_preference_Meta-Llama-3.1-8B-Instruct-FP8_10000.json /scratch-shared/scur2577/cpo_dataset/climate_fever/llmt_preference_Meta-Llama-3.1-8B-Instruct-FP8_10000.json /scratch-shared/scur2577/cpo_dataset/scidocs/llmt_preference_Meta-Llama-3.1-8B-Instruct-FP8_10000.json /scratch-shared/scur2577/cpo_dataset/trec_covid/llmt_preference_Meta-Llama-3.1-8B-Instruct-FP8_10000.json /scratch-shared/scur2577/cpo_dataset/webis_touche2020/llmt_preference_Meta-Llama-3.1-8B-Instruct-FP8_10000.json)
 MODEL_NAME=/scratch-shared/scur2850/cpo_output/model_ft_scidocs_arguana_cfever_covid_touche/checkpoint-6633/
 OUTPUT_DIR=/scratch-shared/scur2850/cpo_eval_$RUN_NAME
 # QUERY_EVAL_PATH=/scratch-shared/scur2850/cpo_dataset
@@ -34,7 +34,7 @@ BATCH_SIZE=32
 
 # rest of the script
 python -m inpars.cpo_eval \
---dataset $DATASET_PATH \
+--dataset "${DATASET_PATH[@]}" \
 --model_name $MODEL_NAME \
 --output_dir $OUTPUT_DIR \
 --query_eval_path $QUERY_EVAL_PATH \

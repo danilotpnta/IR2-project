@@ -29,22 +29,26 @@ def generate_queries(
     dtype="auto",
     enable_prefix_caching=True,
     enable_chunked_prefill=True,
+    force=True,
     **kwargs,
 ):
     save_folder = os.path.join(save_folder, model_name)
     os.makedirs(save_folder, exist_ok=True)
     save_file = f"{save_folder}/results_recovery.json"
 
-    try:
-        with open(save_file, "r") as f:
-            generations = json.load(f)
-        logger.info(f"Found {len(generations)} saved generations.")
-        if len(generations) == len(prompts):
-            logger.info("All generations have already been recovered.")
-            return generations
-    except Exception:
-        logger.info("No generated queries were recovered.")
+    if force is True:
         generations = {}
+    else:
+        try:
+            with open(save_file, "r") as f:
+                generations = json.load(f)
+            logger.info(f"Found {len(generations)} saved generations.")
+            if len(generations) == len(prompts):
+                logger.info("All generations have already been recovered.")
+                return generations
+        except Exception:
+            logger.info("No generated queries were recovered.")
+            generations = {}
 
     # Create a sampling params object.
     sampling_params = SamplingParams(

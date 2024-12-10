@@ -304,6 +304,7 @@ def generate_queries(
     logprobs=None,
     stop=["\n", "Example", "Document:"],
     dtype="auto",
+    force=True,
     **kwargs,
 ):
     """
@@ -329,16 +330,20 @@ def generate_queries(
     save_folder.mkdir(parents=True, exist_ok=True)
     save_file = save_folder / "results_recovery.json"
 
-    try:
-        with open(save_file, "r") as f:
-            generations = json.load(f)
-        logger.info(f"Found {len(generations)} saved generations.")
-        if len(generations) == len(prompts):
-            logger.info("All generations have already been recovered.")
-            return generations
-    except Exception:
-        logger.info("No generated queries were recovered.")
+    if force is True:
         generations = {}
+    
+    else:
+        try:
+            with open(save_file, "r") as f:
+                generations = json.load(f)
+            logger.info(f"Found {len(generations)} saved generations.")
+            if len(generations) == len(prompts):
+                logger.info("All generations have already been recovered.")
+                return generations
+        except Exception:
+            logger.info("No generated queries were recovered.")
+            generations = {}
 
     # build sampling params
     sampling_params = {
