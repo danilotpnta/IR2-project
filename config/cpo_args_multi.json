@@ -1,0 +1,33 @@
+{
+    "model_name_or_path": "meta-llama/Meta-Llama-3.1-8B-Instruct",
+    "model_kwargs": {
+        "device_map": "auto",
+        "max_seq_length": 4096,
+        "dtype":  null
+    },
+    "use_wandb": true,
+    "cpo_data_path": {
+        "scidocs": "/scratch-shared/scur2577/cpo_dataset/scidocs/llmt_preference_Meta-Llama-3.1-8B-Instruct-FP8_10000.json",
+        "arguana": "/scratch-shared/scur2577/cpo_dataset/arguana/llmt_preference_Meta-Llama-3.1-8B-Instruct-FP8_10000.json",
+        "climate_fever": "/scratch-shared/scur2577/cpo_dataset/climate_fever/llmt_preference_Meta-Llama-3.1-8B-Instruct-FP8_10000.json",
+        "trec_covid": "/scratch-shared/scur2577/cpo_dataset/trec_covid/llmt_preference_Meta-Llama-3.1-8B-Instruct-FP8_10000.json",
+        "webis-touche2020/v2": "/scratch-shared/scur2577/cpo_dataset/webis_touche2020/llmt_preference_Meta-Llama-3.1-8B-Instruct-FP8_10000.json"
+
+        
+    },
+    "output_dir": "/scratch-shared/scur2850/cpo_output/model_ft_scidocs_arguana_cfever_covid_touche",
+    "max_source_length": 4096,
+    "preprocessing_num_workers": 16,
+    "overwrite_cache": true,
+    "streaming": true,
+    "max_length": 4096,
+    "max_prompt_length": 2048,
+    "beta": 0.1,
+    "cpo_alpha": 1.0,
+    "do_train": true,
+    "fp16": false,
+    "bf16": true,
+    "dataset_cache": "/scratch-shared/scur2850/cpo_dataset/scidocs_arguana_cfever_covid_touche",
+    "peft_config_path": "/home/scur2577/IR2-project/config/peft_config.json",
+    "resume_from_checkpoint": null
+}

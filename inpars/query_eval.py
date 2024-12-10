@@ -145,6 +145,25 @@ class QueryEval(torch.nn.Module):
             _cls.bm25 = BM25.load(bm25_path)
         logger.info("Loaded embeddings from %s", cache_path)
         return _cls
+ 
+    def expand_with_other(self, other: 'QueryEval') -> 'QueryEval':
+        """Expand the current QueryEval object with the embeddings from another QueryEval object.
+        Args:
+            other: Another QueryEval object with the same dense encoder model.
+        Returns:
+            The current QueryEval object with the embeddings from both objects.
+        """
+        if self.dense_name != other.dense_name:
+            raise ValueError("Dense encoder models should be the same.")
+        
+        self.doc_id2idx.update(other.doc_id2idx)
+        self.doc_embeddings = torch.cat([self.doc_embeddings, other.doc_embeddings], dim=0)
+        self.weights = torch.cat([self.weights, other.weights], dim=0)
+        if self.bm25 and other.bm25:
+            self.bm25.index(other.bm25.documents)
+        elif other.bm25:
+            self.bm25 = other.bm25
+        return self
 
     def score(self,
               queries: Union[str, List[str]],
