@@ -234,7 +234,7 @@ if __name__ == "__main__":
                                       unit="dataset",
                                       total=len(datasets)):
         # generate queries and evaluate
-        print(_)
+        print(dataset_path)
         prompts = []
         doc_ids = []
         for data in dataset["dataset"]:

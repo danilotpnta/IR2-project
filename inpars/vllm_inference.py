@@ -162,4 +162,4 @@ class VLLMQueryGenerator:
         return generations
 
 # singleton
-generate_queries = VLLM_QueryGenerator()
+generate_queries = VLLMQueryGenerator()
