@@ -21,6 +21,7 @@ class VLLMQueryGenerator:
         prompts: list[str],
         doc_ids: list[str],
         model_name="neuralmagic/Llama-3.1-Nemotron-70B-Instruct-HF-FP8-dynamic",
+        lora_repo=None,
         save_folder="cache",
         max_prompt_length=8192,
         batch_size=256,
@@ -80,6 +81,7 @@ class VLLMQueryGenerator:
                 dtype=dtype,
                 tensor_parallel_size=GPUS_AVAILABLE,
                 max_num_batched_tokens=max_prompt_length,
+                lora_repo=lora_repo,
             )
             self.model = llm
             self.model_name = model_name
