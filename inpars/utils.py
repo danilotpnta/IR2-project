@@ -5,6 +5,7 @@ import sys
 import ftfy
 import requests
 import pandas as pd
+import torch
 from tqdm.auto import tqdm
 from tqdm.contrib.concurrent import process_map
 
@@ -201,3 +202,9 @@ def get_prompts(output, prompt, num_examples=3, max_workers=1):
         )
 
     return prompts
+
+def parse_dtype(dtype: str):
+    if dtype == 'auto' or dtype[-1] == '8':
+        return 'auto'
+    else:
+        return getattr(torch, dtype)

@@ -9,6 +9,8 @@ import torch
 from datasets import Dataset
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
+from .utils import parse_dtype
+
 from .query_eval import QueryEval
 from .cpo_dataset import generate_queries  # we should move this.
 from . import vllm_inference
@@ -48,7 +50,7 @@ def cpo_eval(
             "batch_size": batch_size,
             "dtype": dtype,
             "save_folder": output_dir,
-            "force": True,
+            # "force": True,
         }
         logger.info(f"Using VLLM for inference.")
     else:
@@ -63,7 +65,7 @@ def cpo_eval(
             "batch_size": batch_size,
             "torch_dtype": dtype,
             "save_folder": output_dir,
-            "force": True
+            # "force": True
         }
         logger.info(f"Using {type(model)} for inference.")
 
@@ -140,8 +142,8 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--dtype",
-        type=lambda x: exec(x),
-        default="torch.bfloat16",
+        type=parse_dtype,
+        default="bfloat16",
         help="Data type for inference",
     )  # Loophole to get hacked
     parser.add_argument(
@@ -241,7 +243,7 @@ if __name__ == "__main__":
             model=model,
             tokenizer=tokenizer if not args.use_vllm else None,
             query_eval=dataset["query_eval"],
-            output_dir=args.output_dir,
+            output_dir=_.parent,
             use_vllm=args.use_vllm,
             use_wandb=args.use_wandb,
             max_prompt_length=args.max_prompt_length,
@@ -258,17 +260,17 @@ if __name__ == "__main__":
     if not output_path.exists():
         output_path.mkdir(parents=True)
     with open(output_path / "scores.json", "w") as f:
-        scores = {dataset: v["scores"] for dataset, v in datasets.items()}
+        scores = {str(dataset): v["scores"] for dataset, v in datasets.items()}
         json.dump(scores, f)
     print(f"Scores saved to {output_path / 'scores.json'}")
     with open(output_path / "metrics.json", "w") as f:
-        metrics = {dataset: v["metrics"] for dataset, v in datasets.items()}
+        metrics = {str(dataset): v["metrics"] for dataset, v in datasets.items()}
         json.dump(metrics, f)
     print(f"Metrics: {metrics}")
     with open(output_path / "doc_text_score_triples.json", "w") as f:
         json.dump(
             {
-                dataset: {
+                str(dataset): {
                     data["target_doc_id"]: {
                         "document": data["target_doc_text"],
                         "query": v["texts"][data["target_doc_id"]],

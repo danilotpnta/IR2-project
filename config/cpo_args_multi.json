@@ -13,7 +13,6 @@
         "trec_covid": "/scratch-shared/scur2577/cpo_dataset/trec_covid/llmt_preference_Meta-Llama-3.1-8B-Instruct-FP8_10000.json",
         "webis-touche2020/v2": "/scratch-shared/scur2577/cpo_dataset/webis_touche2020/llmt_preference_Meta-Llama-3.1-8B-Instruct-FP8_10000.json"
 
-        
     },
     "output_dir": "/scratch-shared/scur2850/cpo_output/model_ft_scidocs_arguana_cfever_covid_touche",
     "max_source_length": 4096,
