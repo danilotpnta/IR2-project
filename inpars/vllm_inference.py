@@ -70,6 +70,11 @@ class VLLMQueryGenerator:
 
         # avoid re-loading the model all the time
         if self.model_name != model_name:
+            if lora_repo is not None:
+                lora_kwargs = {
+                    "qlora_adapter_name_or_path": lora_repo,
+                    "enable_lora": True,
+                }
             # Create an LLM.
             llm = LLM(
                 model=model_name,
@@ -81,7 +86,7 @@ class VLLMQueryGenerator:
                 dtype=dtype,
                 tensor_parallel_size=GPUS_AVAILABLE,
                 max_num_batched_tokens=max_prompt_length,
-                lora_repo=lora_repo,
+                **lora_kwargs,
             )
             self.model = llm
             self.model_name = model_name
