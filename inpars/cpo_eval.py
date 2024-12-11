@@ -229,7 +229,10 @@ if __name__ == "__main__":
             tokenizer.pad_token = tokenizer.eos_token
             tokenizer.pad_token_id = tokenizer.eos_token_id
 
-    for _, dataset in datasets.items():
+    for dataset_path, dataset in tqdm(datasets.items(),
+                                      desc="Evaluating datasets",
+                                      unit="dataset",
+                                      total=len(datasets)):
         # generate queries and evaluate
         print(_)
         prompts = []
@@ -243,7 +246,7 @@ if __name__ == "__main__":
             model=model,
             tokenizer=tokenizer if not args.use_vllm else None,
             query_eval=dataset["query_eval"],
-            output_dir=_.parent,
+            output_dir=dataset_path.parent,
             use_vllm=args.use_vllm,
             use_wandb=args.use_wandb,
             max_prompt_length=args.max_prompt_length,

@@ -181,7 +181,6 @@ class QueryEval(torch.nn.Module):
         if self.doc_embeddings is None:
             raise ValueError("No document embeddings found. Call load_dataset first.")
 
-        logger.info("Computing similarity scores")
         if isinstance(queries, str):
             queries = [queries]
         if isinstance(doc_indices, str):
