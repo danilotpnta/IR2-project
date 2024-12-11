@@ -303,7 +303,8 @@ def generate_queries(
     max_tokens=256,
     logprobs=None,
     stop=["\n", "Example", "Document:"],
-    dtype="auto",
+    torch_dtype="auto",
+    seed=42,
     force=True,
     **kwargs,
 ):
@@ -325,7 +326,7 @@ def generate_queries(
     - "example_documents": List[str] -- the example document texts
     - "example_queries": List[str] -- the example query texts
     """
-    logger.info(f"Generating queries for %d documents", len(doc_ids))
+    logger.debug(f"Generating queries for %d documents", len(doc_ids))
     save_folder = Path(save_folder) / model.name_or_path
     save_folder.mkdir(parents=True, exist_ok=True)
     save_file = save_folder / "results_recovery.json"
@@ -337,9 +338,9 @@ def generate_queries(
         try:
             with open(save_file, "r") as f:
                 generations = json.load(f)
-            logger.info(f"Found {len(generations)} saved generations.")
+            logger.debug(f"Found {len(generations)} saved generations.")
             if len(generations) == len(prompts):
-                logger.info("All generations have already been recovered.")
+                logger.debug("All generations have already been recovered.")
                 return generations
         except Exception:
             logger.info("No generated queries were recovered.")
@@ -356,18 +357,18 @@ def generate_queries(
     }
     device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
     model.to(device)
-    logger.info("Sampling params: %s", sampling_params)
+    logger.debug("Sampling params: %s", sampling_params)
     # make dataloaders
     loader_docid = DataLoader(doc_ids[len(generations) :], batch_size=batch_size)
     loader_prompts = DataLoader(prompts[len(generations) :], batch_size=batch_size)
-    logger.info("Starting generation for %d document batches", len(loader_docid))
+    logger.debug("Starting generation for %d document batches", len(loader_docid))
     for d_ids, p in tqdm(
         zip(loader_docid, loader_prompts),
         desc="Generating queries",
         unit="batch",
         total=len(loader_docid),
     ):
-        logger.info("batch doc_ids: %s", d_ids)
+        logger.debug("batch doc_ids: %s", d_ids)
         # tokenize the prompts
         inputs = tokenizer(
             p,
@@ -377,7 +378,7 @@ def generate_queries(
             return_tensors="pt",
             return_attention_mask=True,
         ).to(device)
-        logger.info("Tokenized prompts")
+        logger.debug("Tokenized prompts")
         # generate queries
         outputs = model.generate(
             inputs["input_ids"],
@@ -387,7 +388,7 @@ def generate_queries(
             **sampling_params,
             **kwargs,
         )
-        logger.info("Generated queries")
+        logger.debug("Generated queries")
         # omit the input
         outputs = outputs[:, inputs["input_ids"].shape[1] :]
         # decode

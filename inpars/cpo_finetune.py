@@ -197,6 +197,8 @@ def train(
     # save model
     model_path = os.path.join(cpo_config.output_dir, "model" if model_args.save_merged else "adapter_model")
     save_method = f"merged_{model_args.save_precision}" if model_args.save_merged else "lora"
+    if model_args.save_merged and model_args.save_precision == '4bit':
+        save_method += '_forced'
     model.save_pretrained_merged(
         model_path,
         model_args.tokenizer,
