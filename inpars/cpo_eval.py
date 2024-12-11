@@ -29,6 +29,7 @@ def cpo_eval(
     prompts: List[str],
     doc_ids: List[str],
     model: Union[AutoModelForCausalLM, str],
+    adapter_name: str,
     tokenizer: AutoTokenizer,
     query_eval: QueryEval,
     output_dir: str,
@@ -61,6 +62,8 @@ def cpo_eval(
             "seed": seed
             # "force": True,
         }
+        if adapter_name is not None:
+            generator_kwargs["lora_repo"] = adapter_name
         logger.info(f"Using VLLM for inference.")
     else:
         gen_fn = generate_queries
@@ -133,6 +136,12 @@ if __name__ == "__main__":
         "--model_name", type=str, required=True, help="Path to model or model name"
     )
     parser.add_argument(
+        "--adapter_name",
+        type=str,
+        default=None,
+        help="Name of the adapter to use for inference. Use with --use_vllm only",
+    )
+    parser.add_argument(
         "--output_dir", type=str, required=True, help="Path to save the output"
     )
     parser.add_argument(
@@ -175,6 +184,8 @@ if __name__ == "__main__":
         help="Seed for reproducibility",
     )
     args = parser.parse_args()
+    if not args.use_vllm and args.adapter_name is None:
+        raise ValueError("adapter_name is only supported with --use_vllm")
     # change dtype to torch.dtype
     logger.info("parsed arguments\n%s", args)
     
@@ -265,6 +276,7 @@ if __name__ == "__main__":
             prompts=prompts,
             doc_ids=doc_ids,
             model=model,
+            adapter_name=args.adapter_name if args.use_vllm else None,
             tokenizer=tokenizer if not args.use_vllm else None,
             query_eval=dataset["query_eval"],
             output_dir=dataset_path.parent,
