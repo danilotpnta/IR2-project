@@ -1,4 +1,4 @@
-from typing import Literal
+from typing import Literal, Optional
 import os
 import sys
 import json
@@ -45,9 +45,9 @@ class ModelArguments:
         default="fp16",
         metadata={"help": "Precision to save the model in"}
     )
-    push_to_hub: bool = field(
-        default=False,
-        metadata={"help": "Push the model to the hub"}
+    repo_id: Optional[str] = field(
+        default=None,
+        metadata={"help": "Huggingface repo ID to use. If None, we don't push"}
     )
 
     def __post_init__(self):
@@ -196,10 +196,6 @@ def train(
 
     # save model
     model_path = os.path.join(cpo_config.output_dir, "model" if model_args.save_merged else "adapter_model")
-    hub_name = "{}{}".format(
-        model_args.model_name_or_path.split("/")[-1],
-        "_merged" if model_args.save_merged else "",
-    )
     save_method = f"merged_{model_args.save_precision}" if model_args.save_merged else "lora"
     model.save_pretrained_merged(
         model_path,
@@ -207,14 +203,13 @@ def train(
         save_method=save_method,
     )
     logger.info(f"Model saved at {model_path}")
-    if model_args.push_to_hub:
+    if model_args.repo_id:
         model.push_to_hub_merged(
-            hub_name,
+            model_args.repo_id,
             model_args.tokenizer,
             save_method=save_method,
-            token = ""
         )
-        logger.info(f"Model pushed to hub as {hub_name}")
+        logger.info(f"Model pushed to hub as {model_args.repo_id}")
 
 logger = logging.getLogger(__name__)
 
