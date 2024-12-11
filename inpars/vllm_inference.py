@@ -35,6 +35,7 @@ class VLLMQueryGenerator:
         enable_prefix_caching=True,
         enable_chunked_prefill=True,
         force=True,
+        seed=SEED,
         **kwargs,
     ):
         save_folder = os.path.join(save_folder, model_name)
@@ -72,7 +73,7 @@ class VLLMQueryGenerator:
             llm = LLM(
                 model=model_name,
                 enable_prefix_caching=enable_prefix_caching,
-                seed=SEED,
+                seed=seed,
                 gpu_memory_utilization=0.95,
                 max_model_len=max_prompt_length,
                 enable_chunked_prefill=enable_chunked_prefill,
@@ -123,7 +124,7 @@ class VLLMQueryGenerator:
             llm = LLM(
                 model=model_name,
                 enable_prefix_caching=False,
-                seed=SEED,
+                seed=seed,
                 gpu_memory_utilization=0.95,
                 max_model_len=max_prompt_length,
                 enable_chunked_prefill=False,

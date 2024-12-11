@@ -1,3 +1,4 @@
+import os
 import json
 from pathlib import Path
 from typing import List, Tuple, Union, Dict, Any
@@ -17,6 +18,12 @@ from . import vllm_inference
 
 logger = logging.getLogger(__name__)
 
+def set_seed(seed: int):
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
 
 def cpo_eval(
     prompts: List[str],
@@ -30,6 +37,7 @@ def cpo_eval(
     max_prompt_length: int = 4096,
     max_tokens: int = 256,
     batch_size: int = 256,
+    seed: int = 42,
     dtype: torch.dtype = torch.float16,
 ):
     """
@@ -50,6 +58,7 @@ def cpo_eval(
             "batch_size": batch_size,
             "dtype": dtype,
             "save_folder": output_dir,
+            "seed": seed
             # "force": True,
         }
         logger.info(f"Using VLLM for inference.")
@@ -65,6 +74,7 @@ def cpo_eval(
             "batch_size": batch_size,
             "torch_dtype": dtype,
             "save_folder": output_dir,
+            "seed": seed
             # "force": True
         }
         logger.info(f"Using {type(model)} for inference.")
@@ -158,9 +168,20 @@ if __name__ == "__main__":
         default="cpo_eval",
         help="Name of the run so we can identify it later",
     )
+    parser.add_argument(
+        "--seed",
+        type=int,
+        default=42,
+        help="Seed for reproducibility",
+    )
     args = parser.parse_args()
     # change dtype to torch.dtype
     logger.info("parsed arguments\n%s", args)
+    
+    # set seed
+    set_seed(args.seed)
+
+    
     # wandb
     if args.use_wandb:
         import wandb
@@ -253,6 +274,7 @@ if __name__ == "__main__":
             max_tokens=args.max_tokens,
             batch_size=args.batch_size,
             dtype=args.dtype,
+            seed=args.seed,
         )
         dataset["metrics"] = metrics
         dataset["scores"] = scores
