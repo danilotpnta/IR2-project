@@ -1,3 +1,4 @@
+from typing import Literal
 import os
 import sys
 import json
@@ -35,6 +36,18 @@ class ModelArguments:
     use_wandb: bool = field(default=False, metadata={"help": "Use wandb for logging"})
     peft_config_path: str = field(
         default=None, metadata={"help": "Path to peft config file"}
+    )
+    save_merged: bool = field(
+        default=False,
+        metadata={"help": "Save merged model. If False, only the adapter model is saved"}
+    )
+    save_precision: Literal["4bit", "16bit"] = field(
+        default="fp16",
+        metadata={"help": "Precision to save the model in"}
+    )
+    push_to_hub: bool = field(
+        default=False,
+        metadata={"help": "Push the model to the hub"}
     )
 
     def __post_init__(self):
@@ -180,9 +193,28 @@ def train(
     )
     # train
     trainer.train(resume_from_checkpoint=cpo_config.resume_from_checkpoint)
-    # save model
-    trainer.save_model()
 
+    # save model
+    model_path = os.path.join(cpo_config.output_dir, "model" if model_args.save_merged else "adapter_model")
+    hub_name = "{}{}".format(
+        model_args.model_name_or_path.split("/")[-1],
+        "_merged" if model_args.save_merged else "",
+    )
+    save_method = f"merged_{model_args.save_precision}" if model_args.save_merged else "lora"
+    model.save_pretrained_merged(
+        model_path,
+        model_args.tokenizer,
+        save_method=save_method,
+    )
+    logger.info(f"Model saved at {model_path}")
+    if model_args.push_to_hub:
+        model.push_to_hub_merged(
+            hub_name,
+            model_args.tokenizer,
+            save_method=save_method,
+            token = ""
+        )
+        logger.info(f"Model pushed to hub as {hub_name}")
 
 logger = logging.getLogger(__name__)
 
