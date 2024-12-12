@@ -7,7 +7,7 @@
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=16
 #SBATCH --time=00:59:00
-#SBATCH --output=~/IR2-project/logs/generate_%A/log.out
+#SBATCH --output=~/IR2-project/logs/generate_%A.out
 
 #SBATCH --ear=on
 #SBATCH --ear-policy=monitoring
@@ -25,12 +25,8 @@ cd $PROJECT_ROOT
 
 STEP_NAME=generate
 # fill in template variables
-LOG_DIR=$PROJECT_ROOT/logs/$STEP_NAME_$SLURM_JOB_ID
+LOG_PATH=$PROJECT_ROOT/logs/$STEP_NAME_$SLURM_JOB_ID.out
 SCRIPT_PATH=$PROJECT_ROOT/scripts/step_by_step/$STEP.job
-
-# create log directory and copy script
-mkdir -p $LOG_DIR
-cp $SCRIPT_PATH $LOG_DIR
 
 # NOTE: don't include corpus name. Unnecessary
 RUN_NAME=InPars-GEN 
@@ -72,6 +68,8 @@ CACHE_DIR=$OUTPUT_DIR/cache
 # __________________
 # |      EXEC      |
 # __________________
+# create a directory for the logs and the output
+mkdir -p $OUTPUT_DIR/job_$SLURM_JOB_ID
 
 # rest of the script
 srun python -m inpars.generate \
@@ -92,4 +90,9 @@ srun python -m inpars.generate \
 --seed $SEED \
 $ONLY_GENERATE_PROMPT \
 $DTYPE \
-$USE_VLLM
+$USE_VLLM \
+
+# copy the script and the logs to the output directory.
+# This should be done regardless of the success of the job
+echo "Copying logs and script to $OUTPUT_DIR/job_$SLURM_JOB_ID"
+cp $SCRIPT_PATH $LOG_PATH $OUTPUT_DIR/job_$SLURM_JOB_ID
