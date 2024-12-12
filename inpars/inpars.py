@@ -227,7 +227,7 @@ class InPars:
             import tensorflow as tf
 
         cache_dir = Path(cache_dir) / self.corpus
-        cache_dir.mkdir(exist_ok=True)
+        cache_dir.mkdir(exist_ok=True, parents=True)
         cache_file = cache_dir / f"{cache_name}.pkl"
 
         prompts_csv = cache_dir / f"{cache_name}_prompts.csv"
@@ -306,6 +306,9 @@ class InPars:
 
         if self.use_vllm:
             from .vllm_inference import generate_queries
+            print(type(prompts), len(prompts))
+            print(type(doc_ids), len(doc_ids))
+            return
             results = generate_queries(
                 prompts=prompts,
                 doc_ids=doc_ids,
