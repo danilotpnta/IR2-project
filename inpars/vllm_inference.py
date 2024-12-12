@@ -67,15 +67,18 @@ class VLLMQueryGenerator:
             logprobs=logprobs,
             **kwargs,
         )
+        lora_kwargs = {}
+        if lora_repo is not None:
+            lora_kwargs = {
+                "quantization": "bitsandbytes",
+                "load_format": "bitsandbytes",
+                "qlora_adapter_name_or_path": lora_repo,
+                "enable_lora": True,
+                "max_lora_rank": 64,
+            }
 
         # avoid re-loading the model all the time
         if self.model_name != model_name:
-            if lora_repo is not None:
-                lora_kwargs = {
-                    "adapter_name_or_path": lora_repo,
-                    "enable_lora": True,
-                    "max_lora_rank": 64,
-                }
             # Create an LLM.
             llm = LLM(
                 model=model_name,
@@ -87,8 +90,6 @@ class VLLMQueryGenerator:
                 dtype=dtype,
                 tensor_parallel_size=GPUS_AVAILABLE,
                 max_num_batched_tokens=max_prompt_length,
-                quantization="bitsandbytes",
-                load_format="bitsandbytes",
                 **lora_kwargs,
             )
             self.model = llm
@@ -141,6 +142,7 @@ class VLLMQueryGenerator:
                 dtype=dtype,
                 tensor_parallel_size=GPUS_AVAILABLE,
                 max_num_batched_tokens=max_prompt_length,
+                **lora_kwargs,
             )
 
             loader_docid = DataLoader(doc_ids[len(generations) :], batch_size=batch_size)
