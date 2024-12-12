@@ -29,8 +29,8 @@
     "bf16": true,
     "dataset_cache": "/scratch-shared/scur2850/cpo_dataset/scidocs_arguana_cfever_covid_touche",
     "peft_config_path": "/home/scur2850/IR2-project/config/peft_config.json",
-    "resume_from_checkpoint": true,
-    "save_merged": false,
-    "save_precision": "4bit",
-    "repo_id": "mjhamar/Meta-Llama-3.1-8B-Instruct-cpo-beir-adapter"
+    "resume_from_checkpoint": null,
+    "save_merged": true,
+    "save_precision": "16bit",
+    "repo_id": "mjhamar/Meta-Llama-3.1-8B-Instruct-cpo-beir"
 }

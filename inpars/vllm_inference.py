@@ -77,30 +77,30 @@ class VLLMQueryGenerator:
                 "max_lora_rank": 64,
             }
 
-        # avoid re-loading the model all the time
-        if self.model_name != model_name:
-            # Create an LLM.
-            llm = LLM(
-                model=model_name,
-                enable_prefix_caching=enable_prefix_caching,
-                seed=seed,
-                gpu_memory_utilization=0.95,
-                max_model_len=max_prompt_length,
-                enable_chunked_prefill=enable_chunked_prefill,
-                dtype=dtype,
-                tensor_parallel_size=GPUS_AVAILABLE,
-                max_num_batched_tokens=max_prompt_length,
-                **lora_kwargs,
-            )
-            self.model = llm
-            self.model_name = model_name
-        else:
-            llm = self.model
-
         loader_docid = DataLoader(doc_ids[len(generations) :], batch_size=batch_size)
         loader_prompts = DataLoader(prompts[len(generations) :], batch_size=batch_size)
 
         try:
+            # avoid re-loading the model all the time
+            if self.model_name != model_name:
+                # Create an LLM.
+                llm = LLM(
+                    model=model_name,
+                    enable_prefix_caching=enable_prefix_caching,
+                    seed=seed,
+                    gpu_memory_utilization=0.95,
+                    max_model_len=max_prompt_length,
+                    enable_chunked_prefill=enable_chunked_prefill,
+                    dtype=dtype,
+                    tensor_parallel_size=GPUS_AVAILABLE,
+                    max_num_batched_tokens=max_prompt_length,
+                    **lora_kwargs,
+                )
+                self.model = llm
+                self.model_name = model_name
+            else:
+                llm = self.model
+
             for d_ids, p in tqdm(
                 zip(loader_docid, loader_prompts),
                 desc="Generation",
@@ -124,7 +124,7 @@ class VLLMQueryGenerator:
 
                 with open(save_file, "w") as f:
                     json.dump(generations, f)
-        except RuntimeError as e:
+        except (ValueError, RuntimeError) as e:
             # Catch-all mainly targeting the bug with prefix caching
             # TODO: Identify this issue eventually.
             logging.error(f"RuntimeError detected: {e}", stack_info=True)

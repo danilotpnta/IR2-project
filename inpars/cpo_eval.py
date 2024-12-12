@@ -184,7 +184,7 @@ if __name__ == "__main__":
         help="Seed for reproducibility",
     )
     args = parser.parse_args()
-    if not args.use_vllm and args.adapter_name is None:
+    if not args.use_vllm and args.adapter_name is not None:
         raise ValueError("adapter_name is only supported with --use_vllm")
     # change dtype to torch.dtype
     logger.info("parsed arguments\n%s", args)

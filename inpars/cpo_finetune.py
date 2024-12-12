@@ -65,35 +65,6 @@ class ModelArguments:
             if self.wandb_api_key is None:
                 raise ValueError("WANDB_API_KEY is not set")
 
-
-class SavePeftModelCallback(TrainerCallback):
-    """
-    Copy-paste from ALMA/utils/utils.py
-    """
-
-    def on_save(
-        self,
-        args,
-        state,
-        control,
-        **kwargs,
-    ):
-        checkpoint_folder = os.path.join(
-            args.output_dir, f"checkpoint-{state.global_step}"
-        )
-
-        peft_model_path = os.path.join(checkpoint_folder, "adapter_model")
-        kwargs["model"].save_pretrained(peft_model_path)
-
-        pytorch_model_path = os.path.join(checkpoint_folder, "pytorch_model.bin")
-
-        if os.path.isfile(pytorch_model_path) and torch.distributed.get_rank() == 0:
-            os.remove(pytorch_model_path)
-            # create an empty toy file to avoid error in deleting old checkpoints
-            open(pytorch_model_path, "w").close()
-        return control
-
-
 def train(
     model_args: ModelArguments,
     data_config: DataConfig,
@@ -153,7 +124,6 @@ def train(
     del peft_config["task_type"]
 
     model = FastLanguageModel.get_peft_model(model, **peft_config)
-
     # 8-bit optimizer to deal with strained memory requirements
     optimizer = bnb.optim.Lion8bit(
         filter(lambda p: p.requires_grad, model.parameters()),
@@ -183,7 +153,6 @@ def train(
         args=cpo_config,
         optimizers=(optimizer, scheduler),
         train_dataset=train_dataset,
-        callbacks=[SavePeftModelCallback()],
     )
     logger.info(
         f"Number of total parameters: {count_parameters(model, lambda _: True)/10**6:0.1f}M"

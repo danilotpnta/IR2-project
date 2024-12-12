@@ -24,10 +24,12 @@ setup $PROJECT_ROOT
 cd $PROJECT_ROOT
 
 # parameters
-RUN_NAME=cpo_llama8b_sci_arg_cf_cov_tou_vllm # change this for each run
+RUN_NAME=cpo_llama8b_sci_arg_cf_cov_tou_vllm-16bit-merged # change this for each run
 # RUN_NAME=baseline_llama8b # name of the baseline run
 DATASET_PATH=(/scratch-shared/scur2577/cpo_dataset/arguana/llmt_preference_Meta-Llama-3.1-8B-Instruct-FP8_10000.json /scratch-shared/scur2577/cpo_dataset/climate_fever/llmt_preference_Meta-Llama-3.1-8B-Instruct-FP8_10000.json /scratch-shared/scur2577/cpo_dataset/scidocs/llmt_preference_Meta-Llama-3.1-8B-Instruct-FP8_10000.json /scratch-shared/scur2577/cpo_dataset/trec_covid/llmt_preference_Meta-Llama-3.1-8B-Instruct-FP8_10000.json /scratch-shared/scur2577/cpo_dataset/webis_touche2020/llmt_preference_Meta-Llama-3.1-8B-Instruct-FP8_10000.json)
 MODEL_NAME=mjhamar/Meta-Llama-3.1-8B-Instruct-cpo-beir
+#MODEL_NAME=meta-llama/Meta-Llama-3.1-8B-Instruct
+#ADAPTER_NAME=mjhamar/Meta-Llama-3.1-8B-Instruct-cpo-beir
 OUTPUT_DIR=/scratch-shared/scur2850/cpo_eval_$RUN_NAME
 # QUERY_EVAL_PATH=/scratch-shared/scur2850/cpo_dataset
 BATCH_SIZE=32
