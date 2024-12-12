@@ -74,6 +74,7 @@ class InPars:
         max_query_length=None,
         max_prompt_length=None,
         max_new_tokens=64,
+        bf16=False,
         fp16=False,
         int8=False,
         device=None,
@@ -81,6 +82,7 @@ class InPars:
         torch_compile=False,
         verbose=False,
         only_generate_prompt=False,
+        use_vllm=False,
     ):
         """
         Initializes the InPars object with the given parameters.
@@ -111,6 +113,17 @@ class InPars:
         self.verbose = verbose
         self.tf = tf
         self.only_generate_prompt = only_generate_prompt
+        self.use_vllm = use_vllm
+
+        if self.use_vllm:
+            try:
+                from . import vllm_inference
+            except ImportError:
+                Warning("""
+                        VLLM inference not available. Please install vllm first.
+                        
+                        Setting use_vllm to False""")
+                self.use_vllm = False
 
         if device is None:
             self.device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -142,6 +155,9 @@ class InPars:
         )
 
         model_kwargs = {"revision": revision}
+        if bf16:
+            model_kwargs["torch_dtype"] = torch.bfloat16
+            model_kwargs["low_cpu_mem_usage"] = True
         if fp16:
             model_kwargs["torch_dtype"] = torch.float16
             model_kwargs["low_cpu_mem_usage"] = True
@@ -155,7 +171,11 @@ class InPars:
         if self.only_generate_prompt:
             return
 
-        if self.tf:
+        # if VLLM is used, the model is loaded in the generate method
+        if self.use_vllm:
+            self.model = base_model
+
+        elif self.tf:
             from transformers import TFAutoModelForCausalLM
 
             self.model = TFAutoModelForCausalLM.from_pretrained(
@@ -283,6 +303,38 @@ class InPars:
 
         if self.only_generate_prompt:
             return prompts
+
+        if self.use_vllm:
+            from .vllm_inference import generate_queries
+            results = generate_queries(
+                prompts=prompts,
+                doc_ids=doc_ids,
+                model_name=self.model,
+                save_folder=cache_dir,
+                max_prompt_length=self.max_prompt_length,
+                max_tokens=self.max_new_tokens,
+                batch_size=batch_size,
+                use_tqdm_inner=True,
+                force=False,
+                logprobs=1,
+                **generate_kwargs,
+            )
+            # results are in the format doc_id: (query, log_probs, cumulative_log_probs)
+            results = [
+                { # TODO: are we 100% sure we want to save the _same_ prompt for each query?
+                  # same for doc_text ...
+                    "query": results[doc_id][0],
+                    "log_probs": results[doc_id][1],
+                    "prompt_text": prompt_text,
+                    "doc_id": doc_id,
+                    "doc_text": document,
+                    "fewshot_examples": [
+                        example[0] for example in self.fewshot_examples
+                    ],
+                }
+                for doc_id, prompt_text, document in zip(doc_ids, prompts, documents)
+            ]
+            return results
 
         if self.tf:
             generate = tf.function(self.model.generate, jit_compile=True)

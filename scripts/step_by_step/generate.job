@@ -1,0 +1,95 @@
+#!/bin/bash
+
+#SBATCH --partition=gpu
+#SBATCH --gpus=1
+
+#SBATCH --job-name=InPars-GEN
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=16
+#SBATCH --time=00:59:00
+#SBATCH --output=~/IR2-project/logs/generate_%A/log.out
+
+#SBATCH --ear=on
+#SBATCH --ear-policy=monitoring
+#SBATCH --ear-verbose=1
+
+date
+export HF_HOME="/scratch-shared/$USER"
+export GPU_COUNT=$(nvidia-smi --list-gpus | wc -l)
+
+# make sure the correct modules are used and that the virtual environment is active
+PROJECT_ROOT=/home/$USER/IR2-project
+source $PROJECT_ROOT/scripts/snellius_setup.sh
+setup $PROJECT_ROOT
+cd $PROJECT_ROOT
+
+STEP_NAME=generate
+# fill in template variables
+LOG_DIR=$PROJECT_ROOT/logs/$STEP_NAME_$SLURM_JOB_ID
+SCRIPT_PATH=$PROJECT_ROOT/scripts/step_by_step/$STEP.job
+
+# create log directory and copy script
+mkdir -p $LOG_DIR
+cp $SCRIPT_PATH $LOG_DIR
+
+# NOTE: don't include corpus name. Unnecessary
+RUN_NAME=InPars-GEN 
+OUTPUT_DIR=/scratch-shared/scur2850/inpars/$RUN_NAME
+mkdir -p $OUTPUT_DIR
+
+# ___________________
+# |    ARGUMENTS    |
+# ___________________
+
+## CPO-tuned model
+#   mjhamar/Meta-Llama-3.1-8B-Instruct-cpo-beir
+## base model
+#   meta-llama/Meta-Llama-3.1-8B
+MODEL=mjhamar/Meta-Llama-3.1-8B-Instruct-cpo-beir 
+
+PROMPT=inpars # promptagator, inpars, inparsplus
+DATASET=trec-covid
+DATASET_SOURCE=ir_datasets # ir_datasets, pyserini
+
+N_FEWSHOT_EXAMPLES=2
+N_GENERATED_QUERIES=1
+MAX_PROMPT_LENGTH=2048
+MAX_DOC_LENGTH=512
+MAX_QUERY_LENGTH=256
+MAX_NEW_TOKENS=128 # default: 64
+MAX_GENERATIONS=100_000
+BATCH_SIZE=64
+SEED=42
+# Flags, choose one from each line. To disable, set "".
+DTYPE=--bf16 # --bf16 --fp16, --int8 or ""
+USE_VLLM=--use_vllm # or ""
+ONLY_GENERATE_PROMPT="" # --only_generate_prompt
+# path to the queries file
+OUTPUT=$OUTPUT_DIR/$DATASET-queries.jsonl
+# cache to resume from. InPars will make the appropriate subdirectory
+CACHE_DIR=$OUTPUT_DIR/cache
+
+# __________________
+# |      EXEC      |
+# __________________
+
+# rest of the script
+srun python -m inpars.generate \
+--base_model $MODEL \
+--prompt $PROMPT \
+--dataset $DATASET \
+--dataset_source $DATASET_SOURCE \
+--n_fewshot_examples $N_FEWSHOT_EXAMPLES \
+--n_generated_queries $N_GENERATED_QUERIES \
+--max_doc_length $MAX_DOC_LENGTH \
+--max_query_length $MAX_QUERY_LENGTH \
+--max_prompt_length $MAX_PROMPT_LENGTH \
+--max_new_tokens $MAX_NEW_TOKENS \
+--max_generations $MAX_GENERATIONS \
+--batch_size $BATCH_SIZE \
+--output $OUTPUT \
+--cache_dir $CACHE_DIR \
+--seed $SEED \
+$ONLY_GENERATE_PROMPT \
+$DTYPE \
+$USE_VLLM
