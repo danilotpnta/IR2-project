@@ -6,18 +6,18 @@ readme = "README.md"
 license = { file = "LICENSE" }
 requires-python = ">=3.10"
 dependencies = [
-    "torch",
+    "torch>=2.2",
+    "transformers",
     "bitsandbytes",
+    "datasets",
     "ftfy",
     "ir_datasets",
+    "pandas",
     "openai",
     "scipy",
     "scikit-learn",
-    "pandas",
-    "transformers",
-    "wandb",
     "bm25s",
-    "datasets",
+    "wandb",
 ]
 authors = [
     { name = "Danilo Toapanta" },
@@ -34,18 +34,8 @@ authors = [
 ]
 
 [project.optional-dependencies]
-"gpu" = ["faiss-gpu", "pyserini", "vllm"]
-"dense" = ["faiss-gpu", "faiss-cpu", "pyserini"]
-"train" = ["unsloth", "bitsandbytes", "peft", "trl"]
-"all" = [
-    "unsloth",
-    "bitsandbytes",
-    "peft",
-    "trl",
-    "faiss-gpu",
-    "faiss-cpu",
-    "pyserini",
-]
+"dense" = ["faiss-cpu", "pyserini"]
+"train" = ["unsloth>=2024.12.4", "peft", "trl", "torch>=2.4"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -37,9 +37,10 @@ setup $PWD
 ### Step 3: Install the Required Packages
 
 ```bash
-pip install --upgrade pip
+# Install the required packages
+pip install -e ".[all]"
 
-# Install from cache (faster) 
+# It might be faster to install using the requirements.txt file
 pip install -r requirements.txt
 ```
 
@@ -49,12 +50,6 @@ When installing in Snellius you may want to isntall the packages using the `--no
 
 ```bash
 pip install --no-cache-dir -r requirements.txt
-```
-
-You could also use the pip package manager to install InPars toolkit.
-
-```bash
-pip install inpars
 ```
 
 ## License
