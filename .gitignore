@@ -178,3 +178,6 @@ logs/
 
 data/*
 !data/stats/
+
+# keep conf for uploader to HF
+!config/*
