@@ -228,85 +228,38 @@ class InPars:
 
         cache_dir = Path(cache_dir) / self.corpus
         cache_dir.mkdir(exist_ok=True, parents=True)
-        cache_file = cache_dir / f"{cache_name}.pkl"
 
-        prompts_csv = cache_dir / f"{cache_name}_prompts.csv"
+        prompts_json = cache_dir / f"{cache_name}_prompts.json"
         results_csv = cache_dir / f"{cache_name}_results.csv"
 
-        # Try to load cached prompts
-        prompts = []
-        cached_indices = set()
-        if cache_file.exists():
+        prompts = None
+        if prompts_json.exists():
             try:
-                with open(cache_file, "rb") as f:
-                    cache_data = pickle.load(f)
-                    cached_prompts = cache_data.get("prompts", [])
-                    cached_doc_ids = cache_data.get("doc_ids", [])
+                with open(prompts_json, "r") as f:
+                    data = json.load(f)
+                prompts = [data[doc_id] for doc_id in doc_ids]
+            except Exception:
+                print("Could not load prompts from cache file, rebuilding ...")
+                prompts = None
 
-                    prompt_map = dict(zip(cached_doc_ids, cached_prompts))
-
-                    for doc_id in doc_ids:
-                        if doc_id in prompt_map:
-                            prompts.append(prompt_map[doc_id])
-                            cached_indices.add(doc_id)
-
-                    print(f"Loaded {len(cached_indices)} prompts from cache")
-            except Exception as e:
-                print(f"Error loading cache: {e}")
-                prompts = []
-                cached_indices = set()
-
-        documents_tobuild = [
-            document for i, document in enumerate(documents) if doc_ids[i] not in cached_indices
-        ]
-        doc_ids_tobuild = [
-            doc_id for doc_id in doc_ids if doc_id not in cached_indices
-        ]
-        print(f"Building prompts for {len(documents_tobuild)} documents")
-
-        new_prompts = process_map(
-            _build_prompt,
-            documents_tobuild,
-            doc_ids_tobuild,
-            [self.prompter] * len(documents_tobuild),
-            [self.n_fewshot_examples] * len(documents_tobuild),
-            chunksize=128,
-            total=len(documents_tobuild),
-            desc="Building prompts",
-            # disable=len(documents) > 1000,
-        )
-        new_doc_ids = [prompt[1] for prompt in new_prompts]
-        new_prompts = [prompt[0] for prompt in new_prompts]
-        prompts.extend(new_prompts)
-
-        # Update cache with new prompts
-        if new_prompts:
-            try:
-                if cache_file.exists():
-                    with open(cache_file, "rb") as f:
-                        cache_data = pickle.load(f)
-                else:
-                    cache_data = {"prompts": [], "doc_ids": []}
-
-                cache_data["prompts"].extend(new_prompts)
-                cache_data["doc_ids"].extend(new_doc_ids)
-
-                with open(cache_file, "wb") as f:
-                    pickle.dump(cache_data, f)
-                print(f"Cached {len(new_prompts)} new prompts")
-
-                if save_csv:
-                    prompts_df = pd.DataFrame(
-                        {
-                            "doc_id": cache_data["doc_ids"],
-                            "prompt": cache_data["prompts"],
-                        }
-                    )
-                    prompts_df.to_csv(prompts_csv, index=False)
-                    print(f"Saved prompts to {prompts_csv}")
-
-            except Exception as e:
-                print(f"Error updating cache: {e}")
+        if prompts is None:
+            print(f"Building prompts for {len(doc_ids)} documents")
+            prompts = process_map(
+                _build_prompt,
+                documents,
+                doc_ids,
+                [self.prompter] * len(doc_ids),
+                [self.n_fewshot_examples] * len(doc_ids),
+                chunksize=128,
+                total=len(doc_ids),
+                desc="Building prompts",
+                # disable=len(documents) > 1000,
+            )
+            # covert to dict for saving
+            prompts = {doc_id: prompt for prompt, doc_id in prompts}
+            with open(prompts_json, "w") as f:
+                json.dump(prompts, f)
+            prompts = [prompts[doc_id] for doc_id in doc_ids]
 
         if self.only_generate_prompt:
             return prompts
