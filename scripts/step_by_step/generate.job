@@ -1,13 +1,13 @@
 #!/bin/bash
 
-#SBATCH --partition=gpu
+#SBATCH --partition=gpu_h100
 #SBATCH --gpus=1
 
 #SBATCH --job-name=InPars-GEN
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=16
 #SBATCH --time=00:59:00
-#SBATCH --output=~/IR2-project/logs/generate_%A.out
+#SBATCH --output=/scratch-shared/scur2850/logs/generate_%A.out
 
 #SBATCH --ear=on
 #SBATCH --ear-policy=monitoring
@@ -25,8 +25,8 @@ cd $PROJECT_ROOT
 
 STEP_NAME=generate
 # fill in template variables
-LOG_PATH=$PROJECT_ROOT/logs/$STEP_NAME_$SLURM_JOB_ID.out
-SCRIPT_PATH=$PROJECT_ROOT/scripts/step_by_step/$STEP.job
+LOG_PATH="/scratch-shared/scur2850/logs/$STEP_NAME"_"$SLURM_JOB_ID.out"
+SCRIPT_PATH=$PROJECT_ROOT/scripts/step_by_step/$STEP_NAME.job
 
 # NOTE: don't include corpus name. Unnecessary
 RUN_NAME=InPars-GEN 
@@ -44,7 +44,7 @@ mkdir -p $OUTPUT_DIR
 MODEL=mjhamar/Meta-Llama-3.1-8B-Instruct-cpo-beir 
 
 PROMPT=inpars # promptagator, inpars, inparsplus
-DATASET=trec-covid
+DATASET=scifact # trec-covid
 DATASET_SOURCE=ir_datasets # ir_datasets, pyserini
 
 N_FEWSHOT_EXAMPLES=2
