@@ -11,6 +11,33 @@ SEED = int(os.environ.get("SEED", 42))
 
 logger = logging.getLogger()
 
+def _serialize_logprobs(logprobs, num_tokens):
+    """
+    LLM.generate() returns a list of dictionaries of the form:
+    [
+        { token_id: Logprob(logprob=..., rank=...) ...}
+    ]
+    The size of these dictionaries of <= num_tokens+1.
+    If length is >num_tokens, the lowest ranked token is the one in the returned sequence.
+    If length is num_tokens, the sampled token is in top-num_tokens.
+    We only need num_tokens number of logprobs. (otherwise numpy will complain)
+
+    Return:
+    - If num_tokens is None, return an empty list.
+    - If num_tokens=1, return a list of logprobs.
+    - Otherwise, return a list of lists of logprobs.
+    """
+    ret = []
+    if not num_tokens:
+        return ret
+    # iterate over the list of outputs
+    for item in logprobs:
+        lp_list = list(sorted(item.values(), key=lambda x: x.rank)) # ascending order; highest rank first (1, 2, ...)
+        if len(lp_list) > num_tokens:
+            lp_list = lp_list.pop(-2) # remove the lowest ranked token that was not sampled.
+        ret.append([lp.logprob for lp in lp_list]
+                   if num_tokens > 1 else lp_list[0].logprob)
+    return ret
 
 class VLLMQueryGenerator:
     def __init__(self):
@@ -161,9 +188,7 @@ class VLLMQueryGenerator:
                 generations |= {
                     d_id: (
                         output.outputs[0].text,
-                        repr(
-                            output.outputs[0].logprobs
-                        ),  # this is a bit hard to serialize trivially
+                        _serialize_logprobs(output.outputs[0].logprobs, logprobs),  # this is a bit hard to serialize trivially
                         output.outputs[0].cumulative_logprob,
                     )
                     for d_id, output in zip(d_ids, outputs)

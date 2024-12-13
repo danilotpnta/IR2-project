@@ -284,7 +284,7 @@ class InPars:
                 { # TODO: are we 100% sure we want to save the _same_ prompt for each query?
                   # same for doc_text ...
                     "query": results[doc_id][0],
-                    "log_probs": [logp.logprob for logp in results[doc_id][1]],
+                    "log_probs": results[doc_id][1],
                     "prompt_text": prompt_text,
                     "doc_id": doc_id,
                     "doc_text": document,
