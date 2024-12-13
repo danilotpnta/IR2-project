@@ -1,0 +1,41 @@
+{
+    "config": {
+      "models_base_dir": "/scratch-shared/scur2880/rerankers",
+      "gen_data_base_dir": "/home/scur2880/IR2-project/results"
+      
+    },
+    "datasets": {
+      "TREC-COVID": {
+        "models": {
+          "zero-shot": {
+            "file_dir": "trec-covid/Zero-shot",
+            "repo_name": "monot5-3b-inpars-dspy-zero-shot-trec-covid"
+          },
+          "cot": {
+            "file_dir": "trec-covid/CoT",
+            "repo_name": "monot5-3b-inpars-dspy-cot-trec-covid"
+          }
+        },
+        "dataset_files": {
+          "file_dir": "trec-covid",
+          "repo_name": "generated-data"
+        }
+      },
+      "SCIFACT": {
+        "models": {
+          "zero-shot": {
+            "file_dir": "scifact/Zero-shot",
+            "repo_name": "monot5-3b-inpars-dspy-zero-shot-scifact"
+          },
+          "cot": {
+            "file_dir": "scifact/CoT",
+            "repo_name": "monot5-3b-inpars-dspy-cot-scifact"
+          }
+        },
+        "dataset_files": {
+          "file_dir": "scifact",
+          "repo_name": "generated-data"
+        }
+      }
+    }
+  }
