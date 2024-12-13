@@ -15,10 +15,10 @@ import json
 import pickle
 from pathlib import Path
 
-def _build_prompt(document, doc_id, prompter, cached_indices, n_examples=3):
+def _build_prompt(document, doc_id, prompter, n_examples=3):
     return prompter.build(
         document, n_examples=n_examples
-    ), doc_id if doc_id not in cached_indices else None
+    ), doc_id
 
 
 def load_examples(corpus, n_fewshot_examples):
@@ -245,10 +245,10 @@ class InPars:
 
                     prompt_map = dict(zip(cached_doc_ids, cached_prompts))
 
-                    for idx, doc_id in enumerate(doc_ids):
+                    for doc_id in doc_ids:
                         if doc_id in prompt_map:
                             prompts.append(prompt_map[doc_id])
-                            cached_indices.add(idx)
+                            cached_indices.add(doc_id)
 
                     print(f"Loaded {len(cached_indices)} prompts from cache")
             except Exception as e:
@@ -256,20 +256,27 @@ class InPars:
                 prompts = []
                 cached_indices = set()
 
+        documents_tobuild = [
+            document for i, document in enumerate(documents) if doc_ids[i] not in cached_indices
+        ]
+        doc_ids_tobuild = [
+            doc_id for doc_id in doc_ids if doc_id not in cached_indices
+        ]
+        print(f"Building prompts for {len(documents_tobuild)} documents")
+
         new_prompts = process_map(
             _build_prompt,
-            documents,
-            doc_ids,
-            [self.prompter] * len(documents),
-            [cached_indices] * len(documents),
-            [self.n_fewshot_examples] * len(documents),
+            documents_tobuild,
+            doc_ids_tobuild,
+            [self.prompter] * len(documents_tobuild),
+            [self.n_fewshot_examples] * len(documents_tobuild),
             chunksize=128,
-            total=len(documents),
+            total=len(documents_tobuild),
             desc="Building prompts",
-            disable=len(documents) > 1000,
+            # disable=len(documents) > 1000,
         )
-        new_doc_ids = [prompt[1] for prompt in new_prompts if prompt is not None]
-        new_prompts = [prompt[0] for prompt in new_prompts if prompt is not None]
+        new_doc_ids = [prompt[1] for prompt in new_prompts]
+        new_prompts = [prompt[0] for prompt in new_prompts]
         prompts.extend(new_prompts)
 
         # Update cache with new prompts
