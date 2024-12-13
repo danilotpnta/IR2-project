@@ -249,6 +249,9 @@ if __name__ == "__main__":
     if args.dataset and not args.input_run:
         input_run = args.dataset
 
+    if args.device is None:
+        args.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        
     model = Reranker.from_pretrained(
         model_name_or_path=args.model,
         batch_size=args.batch_size,
