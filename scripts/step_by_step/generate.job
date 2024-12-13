@@ -68,8 +68,6 @@ CACHE_DIR=$OUTPUT_DIR/cache
 # __________________
 # |      EXEC      |
 # __________________
-# create a directory for the logs and the output
-mkdir -p $OUTPUT_DIR/job_$SLURM_JOB_ID
 
 # rest of the script
 srun python -m inpars.generate \
@@ -92,7 +90,8 @@ $ONLY_GENERATE_PROMPT \
 $DTYPE \
 $USE_VLLM \
 
+mkdir -p $OUTPUT_DIR/job_${STEP_NAME}_${SLURM_JOB_ID}
 # copy the script and the logs to the output directory.
 # This should be done regardless of the success of the job
-echo "Copying logs and script to $OUTPUT_DIR/job_$SLURM_JOB_ID"
-cp $SCRIPT_PATH $LOG_PATH $OUTPUT_DIR/job${STEP_NAME}_${SLURM_JOB_ID}
+echo "Copying logs and script to $OUTPUT_DIR/job_${STEP_NAME}_${SLURM_JOB_ID}"
+cp $SCRIPT_PATH $LOG_PATH $OUTPUT_DIR/job_${STEP_NAME}_${SLURM_JOB_ID}
