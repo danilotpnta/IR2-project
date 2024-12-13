@@ -141,9 +141,7 @@ class VLLMQueryGenerator:
                 generations |= {
                     d_id: (
                         output.outputs[0].text,
-                        repr(
-                            output.outputs[0].logprobs
-                        ),  # this is a bit hard to serialize trivially
+                        _serialize_logprobs(output.outputs[0].logprobs, logprobs),
                         output.outputs[0].cumulative_logprob,
                     )
                     for d_id, output in zip(d_ids, outputs)
@@ -188,7 +186,7 @@ class VLLMQueryGenerator:
                 generations |= {
                     d_id: (
                         output.outputs[0].text,
-                        _serialize_logprobs(output.outputs[0].logprobs, logprobs),  # this is a bit hard to serialize trivially
+                        _serialize_logprobs(output.outputs[0].logprobs, logprobs),
                         output.outputs[0].cumulative_logprob,
                     )
                     for d_id, output in zip(d_ids, outputs)
