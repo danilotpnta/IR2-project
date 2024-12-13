@@ -23,13 +23,13 @@ source $PROJECT_ROOT/scripts/snellius_setup.sh
 setup $PROJECT_ROOT
 cd $PROJECT_ROOT
 
-STEP_NAME=generate
+STEP_NAME=generate_triples
 # fill in template variables
 LOG_PATH="/scratch-shared/scur2850/logs/$STEP_NAME"_"$SLURM_JOB_ID.out"
 SCRIPT_PATH=$PROJECT_ROOT/scripts/step_by_step/$STEP_NAME.job
 
 # NOTE: make sure this is consistent over all steps
-RUN_NAME=InPars-TST 
+RUN_NAME=InPars-TST
 OUTPUT_DIR=/scratch-shared/scur2850/inpars/$RUN_NAME
 mkdir -p $OUTPUT_DIR
 
@@ -37,33 +37,21 @@ mkdir -p $OUTPUT_DIR
 # |    ARGUMENTS    |
 # ___________________
 
-## CPO-tuned model
-#   mjhamar/Meta-Llama-3.1-8B-Instruct-cpo-beir
-## base model
-#   meta-llama/Meta-Llama-3.1-8B
-MODEL=mjhamar/Meta-Llama-3.1-8B-Instruct-cpo-beir 
-
-PROMPT=inpars # promptagator, inpars, inparsplus
 DATASET=scifact # trec-covid
 DATASET_SOURCE=ir_datasets # ir_datasets, pyserini
-
-N_FEWSHOT_EXAMPLES=2
-N_GENERATED_QUERIES=1
-MAX_PROMPT_LENGTH=2048
-MAX_DOC_LENGTH=512
-MAX_QUERY_LENGTH=256
-MAX_NEW_TOKENS=64 # they used this in the paper
-MAX_GENERATIONS=100_000
-BATCH_SIZE=64
+# decide whether to use the filtered input or not automatically
+NOFILTER_INPUT=$OUTPUT_DIR/$DATASET-queries.jsonl
+FILTERED_INPUT=$OUTPUT_DIR/$DATASET-queries-filtered.jsonl
+if [ -f $FILTERED_INPUT ]; then
+    INPUT=$FILTERED_INPUT
+else
+    INPUT=$NOFILTER_INPUT
+fi
+OUTPUT=$OUTPUT_DIR/$DATASET-triples.jsonl
+INDEX=beir-v1.0.0-$DATSET.flat # although this has no effect as long as $DATASET is not a CSV.
+N_SAMPLES=100
+BATCH_SIZE=256
 SEED=42
-# Flags, choose one from each line. To disable, set "".
-DTYPE=--bf16 # --bf16 --fp16, --int8 or ""
-USE_VLLM=--use_vllm # or ""
-ONLY_GENERATE_PROMPT="" # --only_generate_prompt
-# path to the queries file
-OUTPUT=$OUTPUT_DIR/$DATASET-queries.jsonl
-# cache to resume from. InPars will make the appropriate subdirectory
-CACHE_DIR=$OUTPUT_DIR/cache
 
 # __________________
 # |      EXEC      |
@@ -72,25 +60,15 @@ CACHE_DIR=$OUTPUT_DIR/cache
 mkdir -p $OUTPUT_DIR/job_$SLURM_JOB_ID
 
 # rest of the script
-srun python -m inpars.generate \
---base_model $MODEL \
---prompt $PROMPT \
+srun python -m inpars.generate_triples \
+--input $INPUT \
+--output $OUTPUT \
 --dataset $DATASET \
 --dataset_source $DATASET_SOURCE \
---n_fewshot_examples $N_FEWSHOT_EXAMPLES \
---n_generated_queries $N_GENERATED_QUERIES \
---max_doc_length $MAX_DOC_LENGTH \
---max_query_length $MAX_QUERY_LENGTH \
---max_prompt_length $MAX_PROMPT_LENGTH \
---max_new_tokens $MAX_NEW_TOKENS \
---max_generations $MAX_GENERATIONS \
+--n_samples $N_SAMPLES \
 --batch_size $BATCH_SIZE \
---output $OUTPUT \
---cache_dir $CACHE_DIR \
---seed $SEED \
-$ONLY_GENERATE_PROMPT \
-$DTYPE \
-$USE_VLLM \
+--threads $THREADS \
+--seed $SEED
 
 # copy the script and the logs to the output directory.
 # This should be done regardless of the success of the job

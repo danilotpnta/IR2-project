@@ -23,13 +23,13 @@ source $PROJECT_ROOT/scripts/snellius_setup.sh
 setup $PROJECT_ROOT
 cd $PROJECT_ROOT
 
-STEP_NAME=generate
+STEP_NAME=filter
 # fill in template variables
 LOG_PATH="/scratch-shared/scur2850/logs/$STEP_NAME"_"$SLURM_JOB_ID.out"
 SCRIPT_PATH=$PROJECT_ROOT/scripts/step_by_step/$STEP_NAME.job
 
 # NOTE: make sure this is consistent over all steps
-RUN_NAME=InPars-TST 
+RUN_NAME=InPars-TST
 OUTPUT_DIR=/scratch-shared/scur2850/inpars/$RUN_NAME
 mkdir -p $OUTPUT_DIR
 
@@ -37,33 +37,21 @@ mkdir -p $OUTPUT_DIR
 # |    ARGUMENTS    |
 # ___________________
 
-## CPO-tuned model
-#   mjhamar/Meta-Llama-3.1-8B-Instruct-cpo-beir
-## base model
-#   meta-llama/Meta-Llama-3.1-8B
-MODEL=mjhamar/Meta-Llama-3.1-8B-Instruct-cpo-beir 
-
-PROMPT=inpars # promptagator, inpars, inparsplus
 DATASET=scifact # trec-covid
 DATASET_SOURCE=ir_datasets # ir_datasets, pyserini
+INPUT=$OUTPUT_DIR/$DATASET-queries.jsonl
+OUTPUT=$OUTPUT_DIR/$DATASET-queries-filtered.jsonl
 
-N_FEWSHOT_EXAMPLES=2
-N_GENERATED_QUERIES=1
-MAX_PROMPT_LENGTH=2048
-MAX_DOC_LENGTH=512
-MAX_QUERY_LENGTH=256
-MAX_NEW_TOKENS=64 # they used this in the paper
-MAX_GENERATIONS=100_000
-BATCH_SIZE=64
+STRATEGY=scores # scores, reranker
+KEEP_TOP_K=1 # paper used 1
+RERANKER_MODEL=microsoft/deberta-v3-base # paper uses castorini/monot5-3b-msmarco-10k
+MIN_TOKENS=3
+MAX_TOKENS=1000
+BATCH_SIZE=256
 SEED=42
 # Flags, choose one from each line. To disable, set "".
-DTYPE=--bf16 # --bf16 --fp16, --int8 or ""
-USE_VLLM=--use_vllm # or ""
-ONLY_GENERATE_PROMPT="" # --only_generate_prompt
-# path to the queries file
-OUTPUT=$OUTPUT_DIR/$DATASET-queries.jsonl
-# cache to resume from. InPars will make the appropriate subdirectory
-CACHE_DIR=$OUTPUT_DIR/cache
+SKIP_QUESTIONS="" # --skip_questions_copied_from_context 
+DTYPE=--fp16 # --bf16 --fp16, --int8 or ""
 
 # __________________
 # |      EXEC      |
@@ -72,25 +60,20 @@ CACHE_DIR=$OUTPUT_DIR/cache
 mkdir -p $OUTPUT_DIR/job_$SLURM_JOB_ID
 
 # rest of the script
-srun python -m inpars.generate \
---base_model $MODEL \
---prompt $PROMPT \
+srun python -m inpars.filter \
+--input $INPUT \
 --dataset $DATASET \
 --dataset_source $DATASET_SOURCE \
---n_fewshot_examples $N_FEWSHOT_EXAMPLES \
---n_generated_queries $N_GENERATED_QUERIES \
---max_doc_length $MAX_DOC_LENGTH \
---max_query_length $MAX_QUERY_LENGTH \
---max_prompt_length $MAX_PROMPT_LENGTH \
---max_new_tokens $MAX_NEW_TOKENS \
---max_generations $MAX_GENERATIONS \
---batch_size $BATCH_SIZE \
+--filter_strategy $STRATEGY \
+--keep_top_k $KEEP_TOP_K \
 --output $OUTPUT \
---cache_dir $CACHE_DIR \
+--model_name_or_path $RERANKER_MODEL \
+--min_tokens $MIN_TOKENS \
+--max_tokens $MAX_TOKENS \
+--batch_size $BATCH_SIZE \
 --seed $SEED \
-$ONLY_GENERATE_PROMPT \
+$SKIP_QUESTIONS \
 $DTYPE \
-$USE_VLLM \
 
 # copy the script and the logs to the output directory.
 # This should be done regardless of the success of the job
