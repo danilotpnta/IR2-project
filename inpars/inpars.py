@@ -313,12 +313,9 @@ class InPars:
 
         if self.use_vllm:
             from .vllm_inference import generate_queries
-            print(type(prompts), len(prompts))
-            print(type(doc_ids), len(doc_ids))
-            return
             results = generate_queries(
                 prompts=prompts,
-                doc_ids=doc_ids,
+                doc_ids=doc_ids.values.tolist(),
                 model_name=self.model,
                 save_folder=cache_dir,
                 max_prompt_length=self.max_prompt_length,
