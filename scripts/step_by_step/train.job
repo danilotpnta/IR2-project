@@ -7,7 +7,7 @@
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=16
 #SBATCH --time=00:59:00
-#SBATCH --output=/scratch-shared/scur2850/logs/generate_%A.out
+#SBATCH --output=/scratch-shared/scur2850/logs/train_%A.out
 
 #SBATCH --ear=on
 #SBATCH --ear-policy=monitoring
