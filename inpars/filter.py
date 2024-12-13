@@ -1,4 +1,7 @@
+import os
 import json
+import torch
+import getpass
 import argparse
 import numpy as np
 from tqdm import tqdm
@@ -8,14 +11,21 @@ from .dataset import load_corpus
 def read_synthetic_data(args):
     rows = []
     with open(args.input, 'r') as fin:
-        for line in tqdm(fin):
+        for line in tqdm(fin, desc="Reading synthetic queries"):
             row = json.loads(line.strip())
-            if len(row['log_probs']) < args.min_tokens:
-                continue
-            if len(row['log_probs']) > args.max_tokens:
-                continue
+
+            if args.keep_only_question:
+                if '?' in row['query']:
+                    query, _, _ = row['query'].partition('?')  
+                    row['query'] = query.strip() + '?' 
+
+            if 'log_probs' in row:
+                if len(row['log_probs']) < args.min_tokens:
+                    continue
+                if len(row['log_probs']) > args.max_tokens:
+                    continue
             if args.skip_questions_copied_from_context:
-                if row['question'].lower() in row['doc_text'].lower():
+                if row['query'].lower() in row['doc_text'].lower():
                     continue
             rows.append(row)
     return rows
@@ -50,9 +60,18 @@ if __name__ == '__main__':
                         help="Whether to use FP16 weights during inference.")
     parser.add_argument("--batch_size", default=16, type=int,
                         help="Batch size for inference.")
+    parser.add_argument("--use_scratch_shared_cache", action="store_true",
+                        help="Use scratch-shared directory for Hugging Face cache.")
+    parser.add_argument("--keep_only_question", action="store_true",
+                        help="Keep only the question part of the query.")
 
     args = parser.parse_args()
     assert args.filter_strategy in ['scores', 'reranker']
+
+    if args.use_scratch_shared_cache:
+        hf_cache_dir = f"/scratch-shared/{getpass.getuser()}/.cache/huggingface"
+        os.makedirs(hf_cache_dir, exist_ok=True)
+        os.environ["HF_HOME"] = hf_cache_dir
 
     dataset = read_synthetic_data(args)
 
@@ -62,18 +81,34 @@ if __name__ == '__main__':
     else:
         corpus = load_corpus(args.dataset, source=args.dataset_source)
         corpus = dict(zip(corpus['doc_id'], corpus['text']))
+        
+        if args.device is None:
+            args.device = "cuda" if torch.cuda.is_available() else "cpu"
+
         model = Reranker.from_pretrained(
             model_name_or_path=args.model_name_or_path,
             batch_size=args.batch_size,
             fp16=args.fp16,
             device=args.device,
         )
-        query_scores = model.rescore([(synt_item['query'], corpus[synt_item['doc_id']]) for synt_item in dataset])
+        q_key = "query" if dataset[0].get("query") is not None else "question"
+        
+        query_scores = model.rescore([(synt_item[q_key], corpus[synt_item['doc_id']]) for synt_item in dataset])
         for idx, synt_item in enumerate(dataset):
             synt_item['score'] = query_scores[idx]
 
     dataset.sort(key=lambda dataset: dataset['score'], reverse=True)
+
+    # Saves only top_k scored queries
     with open(args.output, 'w') as fout:
         for row in dataset[:args.keep_top_k]:
             fout.write(json.dumps(row) + '\n')
+
+    # Save all scored queries 
+    output_file_all = '_all.'.join(args.output.rsplit('.', 1))
+    with open(output_file_all, 'w') as fout:
+        for row in dataset:
+            fout.write(json.dumps(row) + '\n')
+
+            
     print("Done!")
