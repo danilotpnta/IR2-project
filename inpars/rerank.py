@@ -198,7 +198,7 @@ class MonoBERTReranker(Reranker):
                 padding=True,
                 truncation="only_second",
                 return_tensors="pt",
-                max_length=self.tokenizer.model_max_length,
+                max_length=min(self.tokenizer.model_max_length, 1024),
             ).to(self.device)
             output = self.model(**tokens)[0]
             scores += output.cpu().detach().tolist()
