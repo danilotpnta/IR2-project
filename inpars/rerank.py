@@ -51,7 +51,7 @@ class Reranker:
             True
             for architecture in config.architectures
             if "ForConditionalGeneration" in architecture
-        )
+        ) if hasattr(config, 'architectures') and config.architectures is not None else False
         if seq2seq:
             if "flan" in model_name_or_path:
                 return FLANT5Reranker(model_name_or_path, **kwargs)
