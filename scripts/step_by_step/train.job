@@ -56,6 +56,7 @@ srun python -m inpars.train \
 --triples $TRIPLES \
 --base_model $MODEL \
 --max_doc_length $MAX_DOC_LENGTH \
+--output_dir $OUTPUT \
 $DTYPE \
 
 mkdir -p $OUTPUT_DIR/job_${STEP_NAME}_${SLURM_JOB_ID}
