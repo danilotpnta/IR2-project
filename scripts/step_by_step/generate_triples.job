@@ -49,6 +49,7 @@ else
 fi
 OUTPUT=$OUTPUT_DIR/$DATASET-triples.jsonl
 INDEX=beir-v1.0.0-$DATSET.flat # although this has no effect as long as $DATASET is not a CSV.
+THREADS=12
 N_SAMPLES=100
 BATCH_SIZE=256
 SEED=42

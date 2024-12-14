@@ -1,6 +1,6 @@
 #!/bin/bash
 
-#SBATCH --partition=gpu_h100
+#SBATCH --partition=gpu_a100
 #SBATCH --gpus=1
 
 #SBATCH --job-name=InPars-GEN
@@ -29,7 +29,7 @@ LOG_PATH="/scratch-shared/scur2850/logs/$STEP_NAME"_"$SLURM_JOB_ID.out"
 SCRIPT_PATH=$PROJECT_ROOT/scripts/step_by_step/$STEP_NAME.job
 
 # NOTE: make sure this is consistent over all steps
-RUN_NAME=InPars-TST
+RUN_NAME=InPars-MiniLM-L-6-v2
 OUTPUT_DIR=/scratch-shared/scur2850/inpars/$RUN_NAME
 mkdir -p $OUTPUT_DIR
 
@@ -37,7 +37,7 @@ mkdir -p $OUTPUT_DIR
 # |    ARGUMENTS    |
 # ___________________
 
-$DATASET=scifact # trec-covid
+DATASET=scifact # trec-covid
 RUN=$OUTPUT_DIR/$DATASET-run.txt
 OUTPUT=$OUTPUT_DIR/$DATASET-eval.json
 STORE_JSON=--json
@@ -51,6 +51,7 @@ STORE_JSON=--json
 srun python -m inpars.evaluate \
 --dataset $DATASET \
 --run $RUN \
+--output_path $OUTPUT \
 $STORE_JSON
 
 mkdir -p $OUTPUT_DIR/job_${STEP_NAME}_${SLURM_JOB_ID}

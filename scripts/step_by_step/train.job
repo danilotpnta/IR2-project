@@ -6,7 +6,7 @@
 #SBATCH --job-name=InPars-GEN
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=16
-#SBATCH --time=00:59:00
+#SBATCH --time=10:59:00
 #SBATCH --output=/scratch-shared/scur2850/logs/train_%A.out
 
 #SBATCH --ear=on
@@ -29,7 +29,7 @@ LOG_PATH="/scratch-shared/scur2850/logs/$STEP_NAME"_"$SLURM_JOB_ID.out"
 SCRIPT_PATH=$PROJECT_ROOT/scripts/step_by_step/$STEP_NAME.job
 
 # NOTE: make sure this is consistent over all steps
-RUN_NAME=InPars-TST
+RUN_NAME=InPars-MiniLM-L-6-v2
 OUTPUT_DIR=/scratch-shared/scur2850/inpars/$RUN_NAME
 mkdir -p $OUTPUT_DIR
 
@@ -37,16 +37,18 @@ mkdir -p $OUTPUT_DIR
 # |    ARGUMENTS    |
 # ___________________
 
-$DATASET=scifact # trec-covid
+DATASET=scifact # trec-covid
 ## ExtraArguments
 TRIPLES=$OUTPUT_DIR/$DATASET-triples.jsonl
-MODEL=microsoft/deberta-v3-base # paper uses castorini/monot5-3b-msmarco-10k
+MODEL=cross-encoder/ms-marco-MiniLM-L-6-v2 # paper uses castorini/monot5-3b-msmarco-10k
 OUTPUT=$OUTPUT_DIR/$DATASET/reranker
 ## TrainingArguments
+MAX_DOC_LENGTH=300 # default
 MAX_STEPS=256 # paper uses 156
-BATCH_SIZE=256
-DTYPE=--bf16 # --bf16 --fp16, --int8 or ""
-
+#BATCH_SIZE=64
+AUTO_BATCH=--auto_find_batch_size
+DTYPE=--fp16 # --bf16 --fp16, --int8 or ""
+RESUME=false # $OUTPUT or false
 # __________________
 # |      EXEC      |
 # __________________
@@ -57,6 +59,9 @@ srun python -m inpars.train \
 --base_model $MODEL \
 --max_doc_length $MAX_DOC_LENGTH \
 --output_dir $OUTPUT \
+--max_steps $MAX_STEPS \
+--resume_from_checkpoint $RESUME \
+$AUTO_BATCH \
 $DTYPE \
 
 mkdir -p $OUTPUT_DIR/job_${STEP_NAME}_${SLURM_JOB_ID}

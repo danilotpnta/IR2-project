@@ -34,7 +34,7 @@ def _serialize_logprobs(logprobs, num_tokens):
     for item in logprobs:
         lp_list = list(sorted(item.values(), key=lambda x: x.rank)) # ascending order; highest rank first (1, 2, ...)
         if len(lp_list) > num_tokens:
-            lp_list = lp_list.pop(-2) # remove the lowest ranked token that was not sampled.
+            _ = lp_list.pop(-2) # remove the lowest ranked token that was not sampled.
         ret.append([lp.logprob for lp in lp_list]
                    if num_tokens > 1 else lp_list[0].logprob)
     return ret
