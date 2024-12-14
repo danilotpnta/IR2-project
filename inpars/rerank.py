@@ -130,7 +130,8 @@ class MonoT5Reranker(Reranker):
                 padding=True,
                 truncation=True,
                 return_tensors="pt",
-                max_length=self.tokenizer.model_max_length,
+                # some models have undefined max length, e.g. deberta-v3
+                max_length=min(self.tokenizer.model_max_length, 1024),
                 pad_to_multiple_of=(8 if self.torch_compile else None),
             ).to(self.device)
             output = self.model.generate(
