@@ -3,7 +3,6 @@ import csv
 import requests
 import pandas as pd
 from tqdm.auto import tqdm
-from transformers import AutoTokenizer
 
 PREBUILT_RUN_URL = "https://huggingface.co/datasets/unicamp-dl/beir-runs/resolve/main/bm25/run.beir-v1.0.0-{dataset}-flat.trec"
 RUNS_CACHE_FOLDER = os.environ["HOME"] + "/.cache/inpars"
@@ -83,7 +82,10 @@ class TRECRun:
         self.df.to_csv(path, index=False, sep="\t", header=False, float_format="%.15f")
 
 
-# Util functions
+# DSPy utils
+from transformers import AutoTokenizer
+
+
 def count_tokens(text, model_name="meta-llama/Llama-3.1-8B"):
 
     tokenizer = AutoTokenizer.from_pretrained(model_name)
@@ -93,3 +95,65 @@ def count_tokens(text, model_name="meta-llama/Llama-3.1-8B"):
     print(f"Number of tokens: {num_tokens}")
 
     return num_tokens
+
+
+from huggingface_hub import list_repo_files, hf_hub_download
+
+
+def download_queries(data_dir: str, repo_id: str = "inpars/generated-data"):
+    """Download the InPars queries from the Hugging Face Hub."""
+
+    data_path = os.path.join(data_dir, "data")
+    os.makedirs(data_path, exist_ok=True)
+
+    repo_files = list_repo_files(repo_id, repo_type="dataset")
+    queries_files = [f for f in repo_files if f.endswith("queries.jsonl")]
+
+    for file_path in queries_files:
+        local_file_path = os.path.join(data_path, file_path)
+        if not os.path.exists(local_file_path):
+            os.makedirs(os.path.dirname(local_file_path), exist_ok=True)
+            hf_hub_download(
+                repo_id=repo_id,
+                filename=file_path,
+                local_dir=data_path,
+                repo_type="dataset",
+            )
+            print(f"Downloaded: {file_path}")
+
+    print(f"InPars queries downloaded and saved to {data_path}")
+
+
+import json
+from pathlib import Path
+from typing import Dict, List
+
+
+class ModelConfig:
+    def __init__(self, config_path: str = "config/dspy_config.json"):
+        self.config_path = Path(config_path)
+        self.model_port_mapping: Dict[str, int] = {}
+        self.max_tokens: Dict[str, int] = {}
+        self.stop_words: List[str] = []
+        self.load_config()
+
+    def load_config(self) -> None:
+
+        with open(self.config_path, "r") as f:
+            config = json.load(f)
+
+        self.model_port_mapping = config["model_port_mapping"]
+        self.max_tokens = config["max_tokens"]
+        self.stop_words = config["stop_words"]
+
+    def get_port(self, model_name: str) -> int:
+        """Get port number for a specific model."""
+        return self.model_port_mapping.get(model_name)
+
+    def get_max_tokens(self, model_name: str) -> int:
+        """Get maximum tokens for a specific model."""
+        return self.max_tokens.get(model_name)
+
+    def get_stop_words(self) -> List[str]:
+        """Get list of stop words."""
+        return self.stop_words
