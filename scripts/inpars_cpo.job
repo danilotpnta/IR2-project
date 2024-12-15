@@ -1,9 +1,9 @@
 #!/bin/bash
-#SBATCH --partition=gpu_a100
+#SBATCH --partition=gpu_h100
 #SBATCH --gpus=1
 #SBATCH --job-name=generation
 #SBATCH --time=3:00:00
-#SBATCH --array=1-1[1]
+#SBATCH --array=1-1%1
 #SBATCH --output=/scratch-shared/scur2850/logs/inpars_cpo_%A_%a.out
 
 #SBATCH --ear=on
