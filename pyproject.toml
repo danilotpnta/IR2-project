@@ -1,0 +1,42 @@
+[project]
+name = "inparsplus"
+version = "2024.12.0-dev"
+description = "Synthetic data generation for the modern age"
+readme = "README.md"
+license = { file = "LICENSE" }
+requires-python = ">=3.10"
+dependencies = [
+    "torch>=2.2",
+    "transformers",
+    "bitsandbytes",
+    "datasets",
+    "ftfy",
+    "ir_datasets",
+    "pandas",
+    "openai",
+    "scipy",
+    "scikit-learn",
+    "bm25s",
+    "wandb",
+]
+authors = [
+    { name = "Danilo Toapanta" },
+    { name = "Miklos Hamar" },
+    { name = "Jesse Brouwers" },
+    { name = "Matey Krastev" },
+    { name = "Luiz Bonifacio" },
+    { name = "Hugo Abonizio" },
+    { name = "Vitor Jeronymo" },
+    { name = "Roberto Lotufo" },
+    { name = "Jakub Zavrel" },
+    { name = "Rodrigo Nogueira" },
+    { name = "Marzieh Fadaee" },
+]
+
+[project.optional-dependencies]
+"dense" = ["faiss-cpu", "pyserini"]
+"train" = ["unsloth>=2024.12.4", "peft", "trl", "torch>=2.4"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = "inpars"
