@@ -64,9 +64,6 @@ if __name__ == "__main__":
 
     # Added output path where the results should be saved.
     parser.add_argument('--output_path', required=True)
-
-    # Added output path where the results should be saved.
-    parser.add_argument('--output_path', required=True)
     args = parser.parse_args()
 
     if args.dataset == "msmarco":
@@ -84,9 +81,6 @@ if __name__ == "__main__":
         run = TRECRun(args.dataset)
         run_file = run.run_file
 
-    results = run_trec_eval(
-        run_file, qrels_file, args.relevance_threshold, args.remove_unjudged
-    )
     results = run_trec_eval(
         run_file, qrels_file, args.relevance_threshold, args.remove_unjudged
     )

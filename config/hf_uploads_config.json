@@ -52,6 +52,38 @@
           "file_dir": "arguana",
           "repo_name": "generated-data"
         }
+      },
+      "NFCORPUS": {
+        "models": {
+          "zero-shot": {
+            "file_dir": "nfcorpus/Zero-shot",
+            "repo_name": "monot5-3b-inpars-dspy-zero-shot-nfcorpus"
+          },
+          "cot": {
+            "file_dir": "nfcorpus/CoT",
+            "repo_name": "monot5-3b-inpars-dspy-cot-nfcorpus"
+          }
+        },
+        "dataset_files": {
+          "file_dir": "nfcorpus",
+          "repo_name": "generated-data"
+        }
+      },
+      "FIQA": {
+        "models": {
+          "zero-shot": {
+            "file_dir": "fiqa/Zero-shot",
+            "repo_name": "monot5-3b-inpars-dspy-zero-shot-fiqa"
+          },
+          "cot": {
+            "file_dir": "fiqa/CoT",
+            "repo_name": "monot5-3b-inpars-dspy-cot-fiqa"
+          }
+        },
+        "dataset_files": {
+          "file_dir": "fiqa",
+          "repo_name": "generated-data"
+        }
       }
     }
   }
