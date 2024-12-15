@@ -3,9 +3,11 @@ import csv
 import requests
 import pandas as pd
 from tqdm.auto import tqdm
+from transformers import AutoTokenizer
 
 PREBUILT_RUN_URL = "https://huggingface.co/datasets/unicamp-dl/beir-runs/resolve/main/bm25/run.beir-v1.0.0-{dataset}-flat.trec"
 RUNS_CACHE_FOLDER = os.environ["HOME"] + "/.cache/inpars"
+
 
 # https://stackoverflow.com/a/62113293
 def download(url: str, fname: str):
@@ -55,11 +57,7 @@ class TRECRun:
     def rerank(self, ranker, queries, corpus, top_k=1000):
         # Converts run to float32 and subtracts a large number to ensure the BM25 scores
         # are lower than those provided by the neural ranker.
-        self.df["score"] = (
-            self.df["score"]
-            .astype("float32")
-            .apply(lambda x: x-10000)
-        )
+        self.df["score"] = self.df["score"].astype("float32").apply(lambda x: x - 10000)
 
         # Reranks only the top-k documents for each query
         subset = (
@@ -69,13 +67,12 @@ class TRECRun:
             .apply(lambda x: [queries[x["qid"]], corpus[x["docid"]]], axis=1)
         )
         scores = ranker.rescore(subset.values.tolist())
-        
+
         self.df.loc[subset.index, "score"] = scores
 
         self.df["ranker"] = ranker.name
         self.df = (
-            self.df
-            .groupby("qid")
+            self.df.groupby("qid")
             .apply(lambda x: x.sort_values("score", ascending=False))
             .reset_index(drop=True)
         )
@@ -83,4 +80,16 @@ class TRECRun:
         self.df["rank"] = self.df.groupby("qid").cumcount() + 1
 
     def save(self, path):
-        self.df.to_csv(path, index=False, sep="\t", header=False, float_format='%.15f')
+        self.df.to_csv(path, index=False, sep="\t", header=False, float_format="%.15f")
+
+
+# Util functions
+def count_tokens(text, model_name="meta-llama/Llama-3.1-8B"):
+
+    tokenizer = AutoTokenizer.from_pretrained(model_name)
+    tokens = tokenizer.tokenize(text)
+
+    num_tokens = len(tokens)
+    print(f"Number of tokens: {num_tokens}")
+
+    return num_tokens
