@@ -40,12 +40,15 @@ if __name__ == "__main__":
     parser.add_argument("--revision", type=str, default=None)
     parser.add_argument("--fp16", action="store_true")
     parser.add_argument("--int8", action="store_true")
+    parser.add_argument("--bf16", action="store_true")
     parser.add_argument("--torch_compile", action="store_true")
     parser.add_argument("--tf", action="store_true")
     parser.add_argument("--output", type=str, required=True)
+    parser.add_argument("--cache_dir", type=str, default='cache')
     parser.add_argument("--seed", type=int, default=1)
     parser.add_argument("--device", type=str, default=None)
     parser.add_argument("--only_generate_prompt", action="store_true")
+    parser.add_argument("--use_vllm", action="store_true", help="Use VLLM for query generation")
     # parser.add_argument('--verbose', action='store_true')
     args = parser.parse_args()
     set_seed(args.seed)
@@ -84,10 +87,12 @@ if __name__ == "__main__":
         max_new_tokens=args.max_new_tokens,
         fp16=args.fp16,
         int8=args.int8,
+        bf16=args.bf16,
         tf=args.tf,
         device=args.device,
         torch_compile=args.torch_compile,
         only_generate_prompt=args.only_generate_prompt,
+        use_vllm=args.use_vllm,
         # verbose=args.verbose,
     )
 
@@ -95,6 +100,7 @@ if __name__ == "__main__":
         documents=dataset["text"],
         doc_ids=dataset["doc_id"],
         batch_size=args.batch_size,
+        cache_dir=args.cache_dir,
     )
     dataset['query'] = [example['query'] for example in generated]
     dataset['log_probs'] = [example['log_probs'] for example in generated]

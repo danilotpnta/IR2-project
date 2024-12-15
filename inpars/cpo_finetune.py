@@ -1,3 +1,4 @@
+from typing import Literal, Optional
 import os
 import sys
 import json
@@ -36,6 +37,18 @@ class ModelArguments:
     peft_config_path: str = field(
         default=None, metadata={"help": "Path to peft config file"}
     )
+    save_merged: bool = field(
+        default=False,
+        metadata={"help": "Save merged model. If False, only the adapter model is saved"}
+    )
+    save_precision: Literal["4bit", "16bit"] = field(
+        default="fp16",
+        metadata={"help": "Precision to save the model in"}
+    )
+    repo_id: Optional[str] = field(
+        default=None,
+        metadata={"help": "Huggingface repo ID to use. If None, we don't push"}
+    )
 
     def __post_init__(self):
         self.config = AutoConfig.from_pretrained(self.model_name_or_path)
@@ -51,35 +64,6 @@ class ModelArguments:
             self.wandb_api_key = os.getenv("WANDB_API_KEY")
             if self.wandb_api_key is None:
                 raise ValueError("WANDB_API_KEY is not set")
-
-
-class SavePeftModelCallback(TrainerCallback):
-    """
-    Copy-paste from ALMA/utils/utils.py
-    """
-
-    def on_save(
-        self,
-        args,
-        state,
-        control,
-        **kwargs,
-    ):
-        checkpoint_folder = os.path.join(
-            args.output_dir, f"checkpoint-{state.global_step}"
-        )
-
-        peft_model_path = os.path.join(checkpoint_folder, "adapter_model")
-        kwargs["model"].save_pretrained(peft_model_path)
-
-        pytorch_model_path = os.path.join(checkpoint_folder, "pytorch_model.bin")
-
-        if os.path.isfile(pytorch_model_path) and torch.distributed.get_rank() == 0:
-            os.remove(pytorch_model_path)
-            # create an empty toy file to avoid error in deleting old checkpoints
-            open(pytorch_model_path, "w").close()
-        return control
-
 
 def train(
     model_args: ModelArguments,
@@ -140,7 +124,6 @@ def train(
     del peft_config["task_type"]
 
     model = FastLanguageModel.get_peft_model(model, **peft_config)
-
     # 8-bit optimizer to deal with strained memory requirements
     optimizer = bnb.optim.Lion8bit(
         filter(lambda p: p.requires_grad, model.parameters()),
@@ -170,7 +153,6 @@ def train(
         args=cpo_config,
         optimizers=(optimizer, scheduler),
         train_dataset=train_dataset,
-        callbacks=[SavePeftModelCallback()],
     )
     logger.info(
         f"Number of total parameters: {count_parameters(model, lambda _: True)/10**6:0.1f}M"
@@ -180,9 +162,25 @@ def train(
     )
     # train
     trainer.train(resume_from_checkpoint=cpo_config.resume_from_checkpoint)
-    # save model
-    trainer.save_model()
 
+    # save model
+    model_path = os.path.join(cpo_config.output_dir, "model" if model_args.save_merged else "adapter_model")
+    save_method = f"merged_{model_args.save_precision}" if model_args.save_merged else "lora"
+    if model_args.save_merged and model_args.save_precision == '4bit':
+        save_method += '_forced'
+    model.save_pretrained_merged(
+        model_path,
+        model_args.tokenizer,
+        save_method=save_method,
+    )
+    logger.info(f"Model saved at {model_path}")
+    if model_args.repo_id:
+        model.push_to_hub_merged(
+            model_args.repo_id,
+            model_args.tokenizer,
+            save_method=save_method,
+        )
+        logger.info(f"Model pushed to hub as {model_args.repo_id}")
 
 logger = logging.getLogger(__name__)
 

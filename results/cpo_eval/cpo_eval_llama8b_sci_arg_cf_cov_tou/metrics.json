@@ -1,0 +1,27 @@
+{
+    "/scratch-shared/scur2577/cpo_dataset/arguana/llmt_preference_Meta-Llama-3.1-8B-Instruct-FP8_10000.json": {
+        "avg_score": 0.7852777447657926,
+        "min_score": 0.34295958280563354,
+        "max_score": 1.0
+    },
+    "/scratch-shared/scur2577/cpo_dataset/climate_fever/llmt_preference_Meta-Llama-3.1-8B-Instruct-FP8_10000.json": {
+        "avg_score": 0.9223404155733684,
+        "min_score": 0.23609238862991333,
+        "max_score": 1.0
+    },
+    "/scratch-shared/scur2577/cpo_dataset/scidocs/llmt_preference_Meta-Llama-3.1-8B-Instruct-FP8_10000.json": {
+        "avg_score": 0.8947556611687982,
+        "min_score": 0.23559211194515228,
+        "max_score": 0.9983800053596497
+    },
+    "/scratch-shared/scur2577/cpo_dataset/trec_covid/llmt_preference_Meta-Llama-3.1-8B-Instruct-FP8_10000.json": {
+        "avg_score": 0.6943810942724347,
+        "min_score": 0.22034750878810883,
+        "max_score": 1.0
+    },
+    "/scratch-shared/scur2577/cpo_dataset/webis_touche2020/llmt_preference_Meta-Llama-3.1-8B-Instruct-FP8_10000.json": {
+        "avg_score": 0.6110268286064915,
+        "min_score": 0.30472061038017273,
+        "max_score": 1.0
+    }
+}

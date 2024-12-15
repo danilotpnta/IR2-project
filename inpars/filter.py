@@ -5,6 +5,7 @@ from tqdm import tqdm
 from .rerank import Reranker
 from .dataset import load_corpus
 
+from transformers import set_seed
 from torch.cuda import empty_cache
 
 def read_synthetic_data(args):
@@ -87,11 +88,17 @@ if __name__ == "__main__":
     parser.add_argument(
         "--batch_size", default=16, type=int, help="Batch size for inference."
     )
+    parser.add_argument(
+        "--seed", type=int, default=1, help="Random seed for reproducibility."
+    )
 
     args = parser.parse_args()
     assert args.filter_strategy in ['scores', 'reranker']
     dataset = read_synthetic_data(args)
     model = None 
+
+    # seed everything
+    set_seed(args.seed)
 
     if args.filter_strategy == "scores":
         for line in tqdm(dataset):

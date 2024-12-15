@@ -40,7 +40,9 @@ def parse_args():
         choices=[
             'EleutherAI/gpt-j-6B',
             'meta-llama/Llama-3.2-3B',
-            'meta-llama/Llama-3.1-8B'
+            'meta-llama/Llama-3.1-8B',
+            'meta-llama/Meta-Llama-3.1-8B-Instruct',
+            'inpars-plus/Meta-Llama-3.1-8B-Instruct_merged-16bit_CPO_BEIR',
         ],
         default='EleutherAI/gpt-j-6B',
         help="Choose query generation model. "
@@ -56,11 +58,15 @@ def parse_args():
         default='castorini/monot5-3b-msmarco-10k',
         help="Choose reranker model."
     )
+    parser.add_argument(
+        '--rerank_topk', type=int, default=1000, help="Number of documents to rerank."
+    )
 
     parser.add_argument(
         '--data_dir',
         default='./'
     )
+    parser.add_argument("--seed", type=int, default=1)
 
     parser.add_argument("--end2end", action="store_true")
 
@@ -75,26 +81,38 @@ def parse_args():
     parser.add_argument("--use_downloaded", action="store_true")
     parser.add_argument("--use_inparsV2_pretrained", action="store_true")
 
+    parser.add_argument("--use_vllm", action="store_true",
+                        help="Use VLLM for query generation")
+    parser.add_argument("--fp16", action="store_true", default=True,
+                        help="Use half precision for training and inference (default).")
+    parser.add_argument("--no_fp16", dest='fp16', action="store_false",
+                        help="Use full precision for training and inference.")
+
     args = parser.parse_args()
 
     return args
 
 
-def generate_queries(prompt_type:str, dataset:str, model:str, output_path:str) -> None:
+def generate_queries(prompt_type:str, dataset:str, model:str, output_path:str, fp16:bool, use_vllm:bool, seed:int) -> None:
     logging.info(f'------Starting query generation : {prompt_type}------')
     start_generation = time.time()
 
+    args = [
+        "python", "-m", "inpars.generate",
+        f"--prompt={prompt_type}",
+        f"--dataset={dataset}",
+        "--dataset_source=ir_datasets",
+        f"--base_model={model}",
+        f"--output={output_path}",
+        f"--seed={seed}",
+    ]
+    if use_vllm:
+        args.append("--use_vllm")
+    if fp16:
+        args.append("--fp16")
+
     try:
-        process = subprocess.run([
-            "python", "-m", "inpars.generate",
-            f"--prompt={prompt_type}",
-            f"--dataset={dataset}",
-            "--dataset_source=ir_datasets",
-            f"--base_model={model}",
-            f"--output={output_path}",
-        ],  stdout=subprocess.PIPE,
-            text=True
-            )
+        process = subprocess.run(args, stdout=subprocess.PIPE, text=True)
         logging.info(process.stdout)
         logging.error(process.stderr)
 
@@ -106,20 +124,27 @@ def generate_queries(prompt_type:str, dataset:str, model:str, output_path:str) -
     logging.info(f'Generating queries took : {generation_time} seconds.\n')
 
 
-def filter_queries(query_path:str, dataset:str, output_path:str, filtering_strategy:str) -> None:
+def filter_queries(query_path:str, dataset:str, output_path:str, filtering_strategy:str,
+                   fp16: bool, seed: int, filtering_model:str = None) -> None:
     logging.info(f'------Starting filtering of : {query_path}------')
     start_generation = time.time()
 
+    args = [
+        "python", "-m", "inpars.filter",
+        f"--input={query_path}",
+        f"--dataset={dataset}",
+        f"--filter_strategy={filtering_strategy}",
+        f"--keep_top_k={10_000}",
+        f"--output={output_path}",
+        f"--seed={seed}",
+    ]
+    if fp16:
+        args.append("--fp16")
+    if filtering_strategy == 'reranker' and filtering_model is not None:
+        args.append(f"--model_name_or_path={filtering_model}")
+
     try:
-        process = subprocess.run([
-            "python", "-m", "inpars.filter",
-            f"--input={query_path}",
-            f"--dataset={dataset}",
-            f"--filter_strategy={filtering_strategy}",
-            f"--keep_top_k={10_000}",
-            f"--output={output_path}",
-            f"--fp16"
-        ],  stdout=subprocess.PIPE,
+        process = subprocess.run(args,  stdout=subprocess.PIPE,
             text=True
             )
         logging.info(process.stdout)
@@ -132,7 +157,7 @@ def filter_queries(query_path:str, dataset:str, output_path:str, filtering_strat
     generation_time = time.time() - start_generation
     logging.info(f'Filtering queries took : {generation_time} seconds.\n')
 
-def generate_triples(filtered_path:str, dataset:str, output_path:str):
+def generate_triples(filtered_path:str, dataset:str, output_path:str, seed:int) -> None:
     logging.info(f'------Starting triple generation of : {filtered_path}------')
     start_generation = time.time()
 
@@ -141,7 +166,8 @@ def generate_triples(filtered_path:str, dataset:str, output_path:str):
             "python", "-m", "inpars.generate_triples",
             f"--input={filtered_path}",
             f"--dataset={dataset}",
-            f"--output={output_path}"
+            f"--output={output_path}",
+            f"--seed={seed}",
         ],  stdout=subprocess.PIPE,
             text=True
             )
@@ -155,20 +181,23 @@ def generate_triples(filtered_path:str, dataset:str, output_path:str):
     generation_time = time.time() - start_generation
     logging.info(f'Triple generation took : {generation_time} seconds.\n')
 
-def train_reranker(triples_path:str, ranker_model:str, output_path):
+def train_reranker(triples_path:str, ranker_model:str, output_path, fp16:bool, seed:int) -> None:
     logging.info(f'------Starting reranker training of : {triples_path}------')
     start_generation = time.time()
+    
+    args = [
+        "python", "-m", "inpars.train",
+        f"--triples={triples_path}",
+        f"--base_model={ranker_model}",
+        f"--output_dir={output_path}",
+        "--max_steps=156",
+        f"--seed={seed}",
+    ]
+    if fp16:
+        args.append("--fp16")
 
     try:
-        process = subprocess.run([
-            "python", "-m", "inpars.train",
-            f"--triples={triples_path}",
-            f"--base_model={ranker_model}",
-            f"--output_dir={output_path}",
-            "--max_steps=156",
-        ],  stdout=subprocess.PIPE,
-            text=True
-            )
+        process = subprocess.run(args, stdout=subprocess.PIPE, text=True)
         logging.info(process.stdout)
         logging.error(process.stderr)
 
@@ -179,20 +208,23 @@ def train_reranker(triples_path:str, ranker_model:str, output_path):
     generation_time = time.time() - start_generation
     logging.info(f'Training took : {generation_time} seconds.\n')
 
-def rerank(model_path:str, dataset:str, output_path):
+def rerank(model_path:str, dataset:str, output_path:str, top_k:int, fp16:bool, seed:int) -> None:
     logging.info(f'------Starting reranking of {dataset} using {model_path}------')
     start_generation = time.time()
 
+    args = [
+        "python", "-m", "inpars.rerank",
+        f"--model={model_path}",
+        f"--dataset={dataset}",
+        f"--output_run={output_path}",
+        f"--top_k={top_k}",
+        f"--seed={seed}",
+    ]
+    if fp16:
+        args.append("--fp16")
+
     try:
-        process = subprocess.run([
-            "python", "-m", "inpars.rerank",
-            f"--model={model_path}",
-            f"--dataset={dataset}",
-            f"--output_run={output_path}",
-            f"--fp16"
-        ],  stdout=subprocess.PIPE,
-            text=True
-            )
+        process = subprocess.run(args, stdout=subprocess.PIPE, text=True)
         logging.info(process.stdout)
         logging.error(process.stderr)
 
@@ -232,16 +264,24 @@ class InParsExperiment:
             dataset:str,
             generation_model:str,
             reranker_model:str,
+            rerank_topk:int,
+            seed:int,
             use_gbq:bool = False,
             use_inparsV2_pretrained:bool = False,
-            use_downloaded:bool = False
+            use_downloaded:bool = False,
+            use_vllm:bool = False,
+            fp16:bool = True
             ):
         self.dataset = dataset 
         self.generation_model = generation_model
         self.reranker_model = reranker_model 
+        self.rerank_topk = rerank_topk
+        self.seed = seed
         self.use_inparsV2_pretrained = use_inparsV2_pretrained
         self.use_downloaded = use_downloaded
         self.pretrained_model = None
+        self.use_vllm = use_vllm
+        self.fp16 = fp16
 
         # Create path where to save data such as queries generated.
         self.root = args.data_dir
@@ -365,7 +405,7 @@ class InParsExperiment:
 
             self.pretrained_model_inpars = f'zeta-alpha-ai/monot5-3b-inpars-v2-{model_name_inpars}'
             self.pretrained_model_prompt = f'inpars/monot5-3b-inpars-v2-{model_name_promptagator}-promptagator'
-        
+
 
     def run_generation(self):
         logging.info(f'Starting query generation stage...')
@@ -378,7 +418,15 @@ class InParsExperiment:
                 logging.info(f'{prompt_type} has already been created. Continuing...')
                 continue
 
-            generate_queries(prompt_type, self.dataset, self.generation_model, query_output_path)
+            generate_queries(
+                prompt_type=prompt_type,
+                dataset=self.dataset,
+                model=self.generation_model,
+                output_path=query_output_path,
+                fp16=self.fp16,
+                use_vllm=self.use_vllm,
+                seed=self.seed
+            )
 
         logging.info(f'Done with the query generation stage!')
 
@@ -393,7 +441,15 @@ class InParsExperiment:
                     logging.info(f'({prompt_type},{filter_type}) has already been filtered. Continuing...')
                     continue
 
-                filter_queries(input_path, self.dataset, filter_output_path, filter_type)
+                filter_queries(
+                    query_path=input_path,
+                    dataset=self.dataset,
+                    output_path=filter_output_path,
+                    filtering_strategy=filter_type,
+                    filtering_model=self.reranker_model,
+                    fp16=self.fp16,
+                    seed=self.seed
+                )
 
 
         logging.info(f'Done with the filtering stage! \n')
@@ -408,7 +464,12 @@ class InParsExperiment:
                     logging.info(f'({prompt_type},{filter_type}) has already triples generated. Continuing...')
                     continue
 
-                generate_triples(input_path, self.dataset, triple_output_path)
+                generate_triples(
+                    filtered_path=input_path,
+                    dataset=self.dataset,
+                    output_path=triple_output_path,
+                    seed=self.seed
+                )
 
         logging.info(f'Done with triple generation stage! \n\n')
 
@@ -421,7 +482,13 @@ class InParsExperiment:
                     logging.info(f'({prompt_type},{filter_type}) has already a reranker trained. Continuing...')
                     continue
                 
-                train_reranker(input_path, self.reranker_model, output_path)
+                train_reranker(
+                    triples_path=input_path,
+                    ranker_model=self.reranker_model,
+                    output_path=output_path,
+                    fp16=self.fp16,
+                    seed=self.seed
+                )
 
         logging.info(f'Done with training stage! \n\n')
     
@@ -436,11 +503,18 @@ class InParsExperiment:
                 
                 if self.use_inparsV2_pretrained:
                     reranker_path = self.pretrained_model_inpars if 'inpars' in prompt_type else self.pretrained_model_prompt
-                rerank(reranker_path, self.dataset, output_path)
+                rerank(
+                    model_path=reranker_path,
+                    dataset=self.dataset,
+                    output_path=output_path,
+                    top_k=self.rerank_topk,
+                    fp16=self.fp16,
+                    seed=self.seed
+                )
 
 
         logging.info(f'Done with reranking stage! \n\n')
-    
+
     def run_evaluation(self):
         for prompt_type in self.prompt_options:
             for filter_type in self.filter_options:
@@ -469,7 +543,6 @@ class InParsExperiment:
         for key, value in data.items():
             logging.info(f'|---{key}---|---{value}---|')
 
-    
 
 if __name__ == '__main__':
     args = parse_args()
@@ -479,9 +552,13 @@ if __name__ == '__main__':
         dataset = args.dataset,
         generation_model = args.generationLLM,
         reranker_model = args.reranker,
+        rerank_topk=args.rerank_topk,
+        seed = args.seed,
         use_gbq = args.use_gbq,
         use_downloaded = args.use_downloaded,
-        use_inparsV2_pretrained = args.use_inparsV2_pretrained
+        use_inparsV2_pretrained = args.use_inparsV2_pretrained,
+        use_vllm = args.use_vllm,
+        fp16=args.fp16
     )
 
     if args.end2end:
@@ -504,6 +581,6 @@ if __name__ == '__main__':
             inpars.run_reranking()
         if args.evaluate:
             inpars.run_evaluation()
-    
+
 
     print('Finished process')
