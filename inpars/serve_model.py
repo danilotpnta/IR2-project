@@ -6,8 +6,7 @@ import psutil
 import getpass
 import argparse
 import subprocess
-
-from config import MODEL_PORT_MAPPING, MAX_TOKENS
+from utils import ModelConfig
 
 
 def is_server_running(port):
@@ -29,7 +28,7 @@ def is_server_running(port):
 def stop_model(model_name):
     """Stop the model server running on the specified port."""
 
-    port = MODEL_PORT_MAPPING.get(model_name, 8000)
+    port = config.get_port(model_name)
     for proc in psutil.process_iter(["pid", "cmdline"]):
         try:
             cmdline = proc.info["cmdline"]
@@ -52,6 +51,7 @@ def stop_model(model_name):
 
 
 def serve_model(
+    config,
     model_name,
     use_scratch_shared_cache=True,
     gpu_memory_utilization=0.975,
@@ -60,13 +60,13 @@ def serve_model(
 ):
     """Start the model server only if it's not already running."""
 
-    for model, port in MODEL_PORT_MAPPING.items():
+    for model, port in config.model_port_mapping.items():
         if is_server_running(port):
             print(f"> Model server for '{model}' is running on port {port}.")
             print(
-                f"> To stop the server, run: \n" 
+                f"> To stop the server, run: \n"
                 f"  $ python {script_path} --stop_model '{model}'"
-                )
+            )
             return
 
     if use_scratch_shared_cache:
@@ -78,10 +78,10 @@ def serve_model(
         os.environ["HF_HOME"] = hf_cache_dir
         print(f"> HF_HOME set to {hf_cache_dir}")
 
-    port = MODEL_PORT_MAPPING.get(model_name, 8001)
+    port = config.get_port(model_name)
     base_model = shlex.quote(model_name)
 
-    max_model_length = MAX_TOKENS.get(model_name, max_model_len)
+    max_model_length = config.max_tokens.get(model_name, max_model_len)
 
     cmd = (
         f"python -m vllm.entrypoints.openai.api_server "
@@ -107,10 +107,7 @@ def serve_model(
     signal.signal(signal.SIGTERM, terminate)
 
     try:
-        print(
-            f"> Model server started with command: \n" 
-            f"  $ {cmd}\n"
-            )
+        print(f"> Model server started with command: \n" f"  $ {cmd}\n")
         process.wait()
     except KeyboardInterrupt:
         terminate(None, None)
@@ -144,7 +141,9 @@ def parse_args():
 if __name__ == "__main__":
     args = parse_args()
 
+    config = ModelConfig()
+
     if args.stop_model:
-        stop_model(args.stop_model)
+        stop_model(config, args.stop_model)
     else:
-        serve_model(args.model_name)
+        serve_model(config, args.model_name)
