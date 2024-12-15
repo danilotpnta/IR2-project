@@ -1,6 +1,6 @@
 import os
 
-os.environ["DSP_CACHEBOOL"] = "false"
+# os.environ["DSP_CACHEBOOL"] = "false"
 
 import sys
 import dspy
@@ -261,7 +261,7 @@ def generate_queries(
 
     # Define strategies
     strategies = {
-        "Zero-shot": SimpleDocumentToQuery,
+        # "Zero-shot": SimpleDocumentToQuery,
         "CoT": dspy.ChainOfThought(
             DocumentToQuery, use_tqdm=True, rationale_type=rationale_type_CoT
         ),

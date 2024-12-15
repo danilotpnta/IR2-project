@@ -36,6 +36,22 @@
           "file_dir": "scifact",
           "repo_name": "generated-data"
         }
+      },
+      "ARGUANA": {
+        "models": {
+          "zero-shot": {
+            "file_dir": "arguana/Zero-shot",
+            "repo_name": "monot5-3b-inpars-dspy-zero-shot-arguana"
+          },
+          "cot": {
+            "file_dir": "arguana/CoT",
+            "repo_name": "monot5-3b-inpars-dspy-cot-arguana"
+          }
+        },
+        "dataset_files": {
+          "file_dir": "arguana",
+          "repo_name": "generated-data"
+        }
       }
     }
   }
