@@ -1,0 +1,19 @@
+{
+    "model_port_mapping": {
+        "EleutherAI/gpt-j-6B": 8000,
+        "meta-llama/Llama-3.1-8B": 8001,
+        "neuralmagic/Llama-3.1-Nemotron-70B-Instruct-HF-FP8-dynamic": 8002
+    },
+    "max_tokens": {
+        "EleutherAI/gpt-j-6B": 2048,
+        "meta-llama/Llama-3.1-8B": 8192,
+        "neuralmagic/Llama-3.1-Nemotron-70B-Instruct-HF-FP8-dynamic": 8192
+    },
+    "stop_words": [
+        "\n",
+        "\n\n",
+        "Bad Question:",
+        "Example",
+        "Document:"
+    ]
+}
