@@ -174,6 +174,7 @@ class InPars:
         # if VLLM is used, the model is loaded in the generate method
         if self.use_vllm:
             self.model = base_model
+            self.model_kwargs = {"dtype": model_kwargs["torch_dtype"]}
 
         elif self.tf:
             from transformers import TFAutoModelForCausalLM
@@ -277,6 +278,7 @@ class InPars:
                 use_tqdm_inner=True,
                 force=False,
                 logprobs=1,
+                **self.model_kwargs,
                 **generate_kwargs,
             )
             # results are in the format doc_id: (query, log_probs, cumulative_log_probs)

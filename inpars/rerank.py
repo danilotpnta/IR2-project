@@ -12,6 +12,7 @@ from transformers import (
     AutoModelForSequenceClassification,
     AutoModelForSeq2SeqLM,
     T5ForConditionalGeneration,
+    set_seed,
 )
 from . import utils
 from .dataset import load_corpus, load_queries
@@ -264,7 +265,10 @@ if __name__ == "__main__":
         type=int,
         help="Top-k documents to be reranked for each query.",
     )
+    parser.add_argument("--seed", default=1, type=int, help="Random seed.")
     args = parser.parse_args()
+
+    set_seed(args.seed)
 
     if args.dataset:
         corpus = load_corpus(args.dataset, source=args.dataset_source)
