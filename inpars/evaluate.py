@@ -6,6 +6,7 @@ from pyserini.search import get_qrels_file
 from .utils import TRECRun
 
 import logging
+import logging
 
 def run_trec_eval(run_file, qrels_file, relevance_threshold=1, remove_unjudged=False):
     args = [
@@ -18,14 +19,20 @@ def run_trec_eval(run_file, qrels_file, relevance_threshold=1, remove_unjudged=F
         "all_trec",
         "-m",
         "judged.10",
+        "-m",
+        "all_trec",
+        "-m",
+        "judged.10",
     ]
 
     if remove_unjudged:
         args.append("-remove-unjudged")
 
+
     args += [qrels_file, run_file]
 
     result = subprocess.run(args, stdout=subprocess.PIPE)
+
 
     metrics = {}
     for line in result.stdout.decode("utf-8").split("\n"):
@@ -57,6 +64,9 @@ if __name__ == "__main__":
 
     # Added output path where the results should be saved.
     parser.add_argument('--output_path', required=True)
+
+    # Added output path where the results should be saved.
+    parser.add_argument('--output_path', required=True)
     args = parser.parse_args()
 
     if args.dataset == "msmarco":
@@ -74,6 +84,9 @@ if __name__ == "__main__":
         run = TRECRun(args.dataset)
         run_file = run.run_file
 
+    results = run_trec_eval(
+        run_file, qrels_file, args.relevance_threshold, args.remove_unjudged
+    )
     results = run_trec_eval(
         run_file, qrels_file, args.relevance_threshold, args.remove_unjudged
     )

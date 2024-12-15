@@ -91,3 +91,62 @@ promptagator-fever:
   template: |
     {document}
     Is it true that {query}
+
+
+# InPars+ templates
+inparsplus-arguana:
+  mode: dynamic_v2
+  template: |
+    Argument: {document}
+    Counter argument: {query}
+inparsplus-fiqa:
+  mode: dynamic_v2
+  template: |
+    Document: {document}
+    Query: {query}
+inparsplus-hotpotqa:
+  mode: dynamic_v2
+  template: |
+    Evidence: {document}
+    Vexed question: {query}
+inparsplus-dbpedia-entity:
+  mode: dynamic_v2
+  template: |
+    Entity: {document}
+    Query: {query}
+inparsplus-nfcorpus:
+  mode: dynamic_v2
+  template: |
+    Article: {document}
+    Query: {query}
+inparsplus-webis-touche2020:
+  mode: dynamic_v2
+  template: |
+    Document: {document}
+    Debate: {query}
+inparsplus-trec-covid:
+  mode: dynamic_v2
+  template: |
+    Document: {document}
+    Question: {query}
+inparsplus-scifact:
+  mode: dynamic_v2
+  template: |
+    Document: {document}
+    Finding: {query}
+inparsplus-scidocs:
+  mode: dynamic_v2
+  template: |
+    Document: {document}
+    Query: The passage is about {query}
+inparsplus-fever:
+  mode: dynamic_v2
+  template: |
+    Document: {document}
+    Query: Is it true that {query}
+
+inparsplus-msmarco-document:
+  mode: dynamic_v2
+  template: |
+    Document: {document}
+    Query: {query}

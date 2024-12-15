@@ -149,6 +149,8 @@ IR2-env*/
 # Avoid loading prescreening results
 cache/
 
+# snellius
+logs/
 # avoid logging wandb files
 wandb/
 reranker/
@@ -181,3 +183,5 @@ data/*
 
 # keep conf for uploader to HF
 !config/*
+
+*.job

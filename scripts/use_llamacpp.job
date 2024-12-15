@@ -1,0 +1,36 @@
+#!/bin/bash
+
+#SBATCH --partition=gpu_h100
+#SBATCH --gpus=1
+
+#SBATCH --job-name=quantize
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=16
+#SBATCH --time=00:59:00
+#SBATCH --mem=180GB
+#SBATCH --output=/scratch-shared/scur2577/runs/%A.out
+#/SBATCH --error=/scratch-shared/scur2577/runs/%a.err
+
+#SBATCH --ear=on
+#SBATCH --ear-policy=monitoring
+#SBATCH --ear-verbose=1
+
+date
+export HF_HOME="/scratch-shared/$USER"
+
+# make sure the correct modules are used and that the virtual environment is active
+PROJECT_ROOT=/home/$USER/IR2-project
+source $PROJECT_ROOT/scripts/snellius_setup.sh
+setup $PROJECT_ROOT
+
+module load 2023
+module load 2024
+# It's a mess, but you may need some of these to build the wheels
+module load OpenMPI/4.1.5-NVHPC-24.5-CUDA-12.1.1
+module load Clang/16.0.6-GCCcore-12.3.0
+
+source $PROJECT_ROOT/.venv/bin/activate
+# Feel free to comment out when you have built the wheels
+CUDACXX=$(which nvcc) CMAKE_ARGS="-DGGMLCUBLAS=on -DCMAKE_CUDA_ARCHITECTURES=all-major" FORCE_CMAKE=1 pip install llama-cpp-python --no-cache-dir --upgrade --verbose
+
+python load_llamacpp.py

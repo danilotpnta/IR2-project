@@ -287,4 +287,8 @@ yarl==1.17.1
 zipp==3.21.0
 zlib-state==0.1.9
 matplotlib
-seaborn
+seabornrequests
+bm25s==0.1.0
+pytest==8.3.3
+trl==0.12.1
+bitsandbytes>=0.44.0
