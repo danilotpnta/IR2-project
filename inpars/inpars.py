@@ -276,7 +276,7 @@ class InPars:
                 max_tokens=self.max_new_tokens,
                 batch_size=batch_size,
                 use_tqdm_inner=True,
-                force=False,
+                force=True,
                 logprobs=1,
                 **self.model_kwargs,
                 **generate_kwargs,
