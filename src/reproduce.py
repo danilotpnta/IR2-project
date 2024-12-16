@@ -86,6 +86,17 @@ def parse_args():
         If --use_inparsV2_pretrained is set, only 'reranker' is available.
         """
     )
+    parser.add_argument(
+        "--prompt_options",
+        nargs='+',
+        default=[],
+        choices=['inpars', 'inpars-gbq', 'promptagator'],
+        help="""Choose one of more prompt options: 'inpars', 'inpars-gbq', 'promptagator'.
+        If no option is provided, we default to ['inpars', 'promptagator'], or, if
+        --use_gbq is set, to ['inpars-gbq', 'promptagator'].
+        Also, if --use_downloaded is set, only 'inpars' is available.
+        """
+    )
     parser.add_argument("--triples", action="store_true")
     parser.add_argument("--finetune", action="store_true")
     parser.add_argument("--rerank", action="store_true")
@@ -108,6 +119,17 @@ def parse_args():
             args.filter_options = ['scores', 'reranker']
         else:
             args.filter_options = ['reranker']
+
+    if args.prompt_options == []:
+        # Possible prompt templates
+        inpars_variant = 'inpars-gbq' if args.use_gbq else 'inpars'
+        args.prompt_options = [inpars_variant, 'promptagator']
+    # Only inpars generations are available
+    if args.use_downloaded:
+        if args.prompt_options != []:
+            logging.warning('Only inpars prompt is available when using downloaded model.')
+        args.prompt_options = ['inpars']
+
 
     return args
 
@@ -306,6 +328,7 @@ class InParsExperiment:
             rerank_topk:int,
             seed:int,
             filter_options:List[str],
+            prompt_options:List[str],
             use_gbq:bool = False,
             use_inparsV2_pretrained:bool = False,
             use_downloaded:bool = False,
@@ -324,6 +347,7 @@ class InParsExperiment:
         self.use_vllm = use_vllm
         self.fp16 = fp16
         self.filter_options = filter_options
+        self.prompt_options = prompt_options
 
         # Create path where to save data such as queries generated.
         self.root = args.data_dir
@@ -343,13 +367,6 @@ class InParsExperiment:
         
         data_path = os.path.join(self.root, result_directory, dataset)
 
-        # Possible prompt templates
-        inpars_variant = 'inpars-gbq' if use_gbq else 'inpars' 
-        self.prompt_options = [inpars_variant, 'promptagator']
-
-        # Only inpars generations are available
-        if use_downloaded:
-            self.prompt_options = ['inpars']
 
         # Set up directory structure for saving data
         if not os.path.exists(data_path):
@@ -593,6 +610,7 @@ if __name__ == '__main__':
         rerank_topk=args.rerank_topk,
         seed = args.seed,
         filter_options = args.filter_options,
+        prompt_options=args.prompt_options,
         use_gbq = args.use_gbq,
         use_downloaded = args.use_downloaded,
         use_inparsV2_pretrained = args.use_inparsV2_pretrained,
