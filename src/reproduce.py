@@ -148,6 +148,24 @@ def filter_queries(query_path:str, dataset:str, output_path:str, filtering_strat
                    fp16: bool, seed: int, filtering_model:str = None) -> None:
     logging.info(f'------Starting filtering of : {query_path}------')
     start_generation = time.time()
+    if filtering_strategy == 'no_filter':
+        # copy the file
+        try:
+            process = subprocess.run([
+                "cp", query_path, output_path
+            ],  stdout=subprocess.PIPE,
+                text=True
+                )
+            logging.info(process.stdout)
+            logging.error(process.stderr)
+
+        except subprocess.CalledProcessError as e:
+            logging.error(f"Subprocess failed with exit code {e.returncode}")
+            return
+    
+        generation_time = time.time() - start_generation
+        logging.info(f'Queries copied without filtering in {generation_time} seconds.\n')
+        return
 
     args = [
         "python", "-m", "inpars.filter",
