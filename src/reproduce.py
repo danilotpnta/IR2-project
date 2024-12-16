@@ -1,3 +1,4 @@
+from typing import List
 import subprocess
 import argparse
 import logging
@@ -47,6 +48,9 @@ def parse_args():
         default='EleutherAI/gpt-j-6B',
         help="Choose query generation model. "
     )
+    parser.add_argument(
+        '--max_generations', type=int, default=100_000, help="Number of queries to generate."
+    )
 
     parser.add_argument(
         '--reranker',
@@ -72,6 +76,16 @@ def parse_args():
 
     parser.add_argument("--generate", action="store_true")
     parser.add_argument("--filter", action="store_true")
+    parser.add_argument(
+        "--filter_options",
+        nargs='+',
+        default=[],
+        choices=['scores', 'reranker', 'no_filter'],
+        help="""Choose one of more filtering options: 'scores', 'reranker', 'no_filter'.
+        If no option is provided, we default to ['scores', 'reranker'].
+        If --use_inparsV2_pretrained is set, only 'reranker' is available.
+        """
+    )
     parser.add_argument("--triples", action="store_true")
     parser.add_argument("--finetune", action="store_true")
     parser.add_argument("--rerank", action="store_true")
@@ -89,11 +103,16 @@ def parse_args():
                         help="Use full precision for training and inference.")
 
     args = parser.parse_args()
+    if args.filter_options == []:
+        if not args.use_inparsV2_pretrained:
+            args.filter_options = ['scores', 'reranker']
+        else:
+            args.filter_options = ['reranker']
 
     return args
 
 
-def generate_queries(prompt_type:str, dataset:str, model:str, output_path:str, fp16:bool, use_vllm:bool, seed:int) -> None:
+def generate_queries(prompt_type:str, dataset:str, model:str, output_path:str, fp16:bool, use_vllm:bool, seed:int, max_generations:int) -> None:
     logging.info(f'------Starting query generation : {prompt_type}------')
     start_generation = time.time()
 
@@ -102,6 +121,7 @@ def generate_queries(prompt_type:str, dataset:str, model:str, output_path:str, f
         f"--prompt={prompt_type}",
         f"--dataset={dataset}",
         "--dataset_source=ir_datasets",
+        f"--max_generations={max_generations}",
         f"--base_model={model}",
         f"--output={output_path}",
         f"--seed={seed}",
@@ -263,17 +283,20 @@ class InParsExperiment:
             data_path:str,
             dataset:str,
             generation_model:str,
+            max_generations:int,
             reranker_model:str,
             rerank_topk:int,
             seed:int,
+            filter_options:List[str],
             use_gbq:bool = False,
             use_inparsV2_pretrained:bool = False,
             use_downloaded:bool = False,
             use_vllm:bool = False,
-            fp16:bool = True
+            fp16:bool = True,
             ):
         self.dataset = dataset 
         self.generation_model = generation_model
+        self.max_generations = max_generations
         self.reranker_model = reranker_model 
         self.rerank_topk = rerank_topk
         self.seed = seed
@@ -282,6 +305,7 @@ class InParsExperiment:
         self.pretrained_model = None
         self.use_vllm = use_vllm
         self.fp16 = fp16
+        self.filter_options = filter_options
 
         # Create path where to save data such as queries generated.
         self.root = args.data_dir
@@ -308,12 +332,6 @@ class InParsExperiment:
         # Only inpars generations are available
         if use_downloaded:
             self.prompt_options = ['inpars']
-
-        # Possible filtering options (inparsV1, inparsV2 respectively)
-        if use_inparsV2_pretrained:
-            self.filter_options = ['reranker']
-        else:
-            self.filter_options = ['scores', 'reranker']
 
         # Set up directory structure for saving data
         if not os.path.exists(data_path):
@@ -425,7 +443,8 @@ class InParsExperiment:
                 output_path=query_output_path,
                 fp16=self.fp16,
                 use_vllm=self.use_vllm,
-                seed=self.seed
+                seed=self.seed,
+                max_generations=self.max_generations
             )
 
         logging.info(f'Done with the query generation stage!')
@@ -551,14 +570,16 @@ if __name__ == '__main__':
         data_path = args.data_dir,
         dataset = args.dataset,
         generation_model = args.generationLLM,
+        max_generations=args.max_generations,
         reranker_model = args.reranker,
         rerank_topk=args.rerank_topk,
         seed = args.seed,
+        filter_options = args.filter_options,
         use_gbq = args.use_gbq,
         use_downloaded = args.use_downloaded,
         use_inparsV2_pretrained = args.use_inparsV2_pretrained,
         use_vllm = args.use_vllm,
-        fp16=args.fp16
+        fp16=args.fp16,
     )
 
     if args.end2end:
