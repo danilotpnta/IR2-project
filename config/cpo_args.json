@@ -1,5 +1,5 @@
 {
-    "model_name_or_path": "meta-llama/Meta-Llama-3.1-8B-Instruct",
+    "model_name_or_path": "meta-llama/Meta-Llama-3.1-8B",
     "model_kwargs": {
         "device_map": "auto",
         "max_seq_length": 4096,
@@ -7,9 +7,9 @@
     },
     "use_wandb": true,
     "cpo_data_path": {
-        "msmarco-dataset/train": "/scratch-shared/scur2850/cpo_dataset/llmt_preference_Meta-Llama-3.1-8B-Instruct-FP8_msmarco-document-train_100000.json"
+        "msmarco-document": "/scratch-shared/scur2577/cpo_dataset/msmarco_document/llmt_preference_Meta-Llama-3.1-8B_100000.json"
     },
-    "output_dir": "/scratch-shared/scur2850/cpo_output/model",
+    "output_dir": "/scratch-shared/scur2577/cpo_output/model_msmarco",
     "max_source_length": 4096,
     "preprocessing_num_workers": 16,
     "overwrite_cache": true,
@@ -21,7 +21,10 @@
     "do_train": true,
     "fp16": false,
     "bf16": true,
-    "dataset_cache": "/scratch-shared/scur2850/cpo_output/dataset100000",
+    "dataset_cache": "/scratch-shared/scur2577/cpo_output/msmarco_document",
     "peft_config_path": "/home/scur2577/IR2-project/config/peft_config.json",
-    "resume_from_checkpoint": null
+    "resume_from_checkpoint": null,
+    "save_merged": false,
+    "save_precision": "16bit",
+    "repo_id": "inpars-plus/Meta-Llama-3.1-8B-Instruct_merged-16bit_CPO_MSMARCO"
 }

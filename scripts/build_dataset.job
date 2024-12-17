@@ -5,13 +5,9 @@
 
 #SBATCH --job-name=BUILD_DATASET
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=4
-#SBATCH --time=00:59:00
+#SBATCH --cpus-per-task=16
+#SBATCH --time=23:59:00
 #SBATCH --output=/scratch-shared/scur2850/logs/build_%A.out
-
-#SBATCH --ear=on
-#SBATCH --ear-policy=monitoring
-#SBATCH --ear-verbose=1
 
 date
 export HF_HOME="/scratch-shared/$USER"
@@ -24,11 +20,11 @@ setup $PROJECT_ROOT
 cd $PROJECT_ROOT
 
 MODEL_NAME="meta-llama/Meta-Llama-3.1-8B"
-TEACHER_MODEL="neuralmagic/Llama-3.1-Nemotron-70B-Instruct-HF-FP8-dynamic"
+TEACHER_MODEL="neuralmagic-ent/Llama-3.3-70B-Instruct-FP8-dynamic"
 OUTPUT_DIR="/scratch-shared/$USER/cpo_dataset"
-NUM_SAMPLES=100
+NUM_SAMPLES=100000
 PROMPT_TEMPLATE_NAME="inparsplus"
-DATASET_NAME="msmarco-document/train"
+DATASET_NAME="msmarco-document"
 NUM_EXAMPLES=2
 
 # rest of the script
@@ -40,5 +36,5 @@ srun python -m inpars.cpo_dataset \
 --prompt_template_name $PROMPT_TEMPLATE_NAME \
 --dataset_name $DATASET_NAME \
 --num_examples $NUM_EXAMPLES \
---student_use_fp16 \
 --use_vllm
+# --student_use_fp16 \

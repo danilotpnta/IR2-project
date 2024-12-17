@@ -9,9 +9,7 @@
 #SBATCH --time=23:59:00
 #SBATCH --output=/scratch-shared/scur2850/logs/cpo_eval_%A.out
 
-# SBATCH --ear=on
-# SBATCH --ear-policy=monitoring
-# SBATCH --ear-verbose=1
+
 
 date
 export HF_HOME="/scratch-shared/$USER"

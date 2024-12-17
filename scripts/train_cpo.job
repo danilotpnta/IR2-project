@@ -9,10 +9,6 @@
 #SBATCH --time=23:59:00
 #SBATCH --output=/scratch-shared/scur2850/logs/cpo_train_%A.out
 
-# SBATCH --ear=on
-# SBATCH --ear-policy=monitoring
-# SBATCH --ear-verbose=1
-
 date
 
 # make sure the correct modules are used and that the virtual environment is active
@@ -24,7 +20,7 @@ cd $PROJECT_ROOT
 export HF_HOME="/scratch-shared/$USER"
 export GPU_COUNT=$(nvidia-smi --list-gpus | wc -l)
 
-ARGS_PATH="$PROJECT_ROOT/config/cpo_args_multi.json"
+ARGS_PATH="$PROJECT_ROOT/config/cpo_args.json"
 
 # rest of the script
 srun python -m inpars.cpo_finetune $ARGS_PATH

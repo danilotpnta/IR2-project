@@ -333,7 +333,7 @@ def generate_queries(
 
     if force is True:
         generations = {}
-    
+
     else:
         try:
             with open(save_file, "r") as f:
@@ -462,7 +462,8 @@ def build_cpo_dataset(
     use_vllm: bool = False,
     deterministic: bool = True,
     enable_prefix_caching: bool = True,
-    enable_chunked_prefill: bool = True
+    enable_chunked_prefill: bool = True,
+    temperature=0.3,
 ):
     """
     TODO: update the docstring
@@ -662,15 +663,19 @@ def build_cpo_dataset(
 
             prompts = [data["prompt"] for data in output["data"].values()]
             teacher_queries = vllm_inference.generate_queries(
-                prompts,
-                output["doc_ids"],
-                teacher_model,
-                output_dir,
+                prompts=prompts,
+                doc_ids=output["doc_ids"],
+                model_name=teacher_model,
+                save_folder=output_dir,
                 max_prompt_length=max_prompt_length,
                 dtype=teacher_dtype,
                 enable_prefix_caching=enable_prefix_caching,
-                enable_chunked_prefill=enable_chunked_prefill
+                enable_chunked_prefill=enable_chunked_prefill,
+                temperature=temperature,
+                force=False,
             )
+            vllm_inference.generate_queries.release()
+
         else:
             # load model and tokenizer
             teacher_tokenizer = AutoTokenizer.from_pretrained(teacher_model)
@@ -685,6 +690,8 @@ def build_cpo_dataset(
                 save_folder=output_dir,
                 max_prompt_length=max_prompt_length,
                 dtype=teacher_dtype,
+                temperature=temperature,
+                force=False,
             )
 
         for doc_id, query in teacher_queries.items():
@@ -704,13 +711,16 @@ def build_cpo_dataset(
 
             prompts = [data["prompt"] for data in output["data"].values()]
             student_queries = vllm_inference.generate_queries(
-                prompts,
-                output["doc_ids"],
-                model_name,
-                output_dir,
+                prompts=prompts,
+                doc_ids=output["doc_ids"],
+                model_name=model_name,
+                save_folder=output_dir,
                 max_prompt_length=max_prompt_length,
                 dtype=student_dtype,
+                temperature=temperature,
+                force=True,
             )
+            vllm_inference.generate_queries.release()
         else:
             # load model and tokenizer
             student_tokenizer = AutoTokenizer.from_pretrained(model_name)
@@ -725,6 +735,8 @@ def build_cpo_dataset(
                 save_folder=output_dir,
                 max_prompt_length=max_prompt_length,
                 dtype=student_dtype,
+                temperature=temperature,
+                force=False,
             )
 
         for doc_id, query in student_queries.items():
@@ -835,6 +847,7 @@ if __name__ == "__main__":
     parser.add_argument("--use_vllm", action="store_true")
     parser.add_argument("--enable_chunked_prefill", action="store_true")
     parser.add_argument("--enable_prefix_caching", action="store_true")
+    parser.add_argument("--temperature", type=float, default=0.3)
     args = parser.parse_args()
     logging.debug(f"Arguments: {args}")
 
@@ -852,7 +865,8 @@ if __name__ == "__main__":
         max_doc_length=args.max_doc_length,
         max_query_length=args.max_query_length,
         max_prompt_length=args.max_prompt_length,
-        max_new_token=args.max_new_token,
-        use_vllm=args.use_vllm,
         max_workers=args.max_workers,
+        use_vllm=args.use_vllm,
+        max_new_token=args.max_new_token,
+        temperature=args.temperature,
     )

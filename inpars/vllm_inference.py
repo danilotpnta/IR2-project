@@ -2,6 +2,7 @@ import logging
 import os
 import json
 
+import torch
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 from vllm import LLM, SamplingParams
@@ -10,6 +11,7 @@ GPUS_AVAILABLE = int(os.environ.get("GPU_COUNT", 1))
 SEED = int(os.environ.get("SEED", 42))
 
 logger = logging.getLogger()
+
 
 def _serialize_logprobs(logprobs, num_tokens):
     """
@@ -32,26 +34,36 @@ def _serialize_logprobs(logprobs, num_tokens):
         return ret
     # iterate over the list of outputs
     for item in logprobs:
-        lp_list = list(sorted(item.values(), key=lambda x: x.rank)) # ascending order; highest rank first (1, 2, ...)
+        lp_list = list(
+            sorted(item.values(), key=lambda x: x.rank)
+        )  # ascending order; highest rank first (1, 2, ...)
         if len(lp_list) > num_tokens:
-            _ = lp_list.pop(-2) # remove the lowest ranked token that was not sampled.
-        ret.append([lp.logprob for lp in lp_list]
-                   if num_tokens > 1 else lp_list[0].logprob)
+            _ = lp_list.pop(-2)  # remove the lowest ranked token that was not sampled.
+        ret.append(
+            [lp.logprob for lp in lp_list] if num_tokens > 1 else lp_list[0].logprob
+        )
     return ret
+
 
 class VLLMQueryGenerator:
     def __init__(self):
         self.model = None
         self.model_name = ""
 
-    def __call__(self,
+    def release(self):
+        del self.model
+        self.model = None
+        torch.cuda.empty_cache()
+
+    def __call__(
+        self,
         prompts: list[str],
         doc_ids: list[str],
         model_name="neuralmagic/Llama-3.1-Nemotron-70B-Instruct-HF-FP8-dynamic",
-        lora_repo=None,
+        lora_repo: str = None,
         save_folder="cache",
         max_prompt_length=8192,
-        batch_size=256,
+        batch_size=2048,
         use_tqdm_inner=True,
         top_k=500,
         top_p=0.9,
@@ -90,6 +102,7 @@ class VLLMQueryGenerator:
             top_p=top_p,
             temperature=temperature,
             stop=stop,
+            seed=seed,
             max_tokens=max_tokens,
             logprobs=logprobs,
             **kwargs,
@@ -170,8 +183,12 @@ class VLLMQueryGenerator:
                 **lora_kwargs,
             )
 
-            loader_docid = DataLoader(doc_ids[len(generations) :], batch_size=batch_size)
-            loader_prompts = DataLoader(prompts[len(generations) :], batch_size=batch_size)
+            loader_docid = DataLoader(
+                doc_ids[len(generations) :], batch_size=batch_size
+            )
+            loader_prompts = DataLoader(
+                prompts[len(generations) :], batch_size=batch_size
+            )
 
             for d_ids, p in tqdm(
                 zip(loader_docid, loader_prompts),
@@ -196,6 +213,7 @@ class VLLMQueryGenerator:
                     json.dump(generations, f)
 
         return generations
+
 
 # singleton
 generate_queries = VLLMQueryGenerator()
