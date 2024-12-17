@@ -108,7 +108,7 @@ def prepare_data(
         model_name = dspy.settings.lm.kwargs["model"]
         tokenizer = AutoTokenizer.from_pretrained(model_name)
 
-        signature_tokens = 70
+        signature_tokens = 100
         model_context_length = config.get_max_tokens(model_name)
         max_doc_len = model_context_length - 2 * max_new_tokens - signature_tokens
         needs_truncation = prompts.str.len() > model_context_length
@@ -132,6 +132,24 @@ def prepare_data(
 
 class DocumentToQuery(dspy.Signature):
     """Extract a single relevant query that encompasses the document."""
+
+    document = dspy.InputField(desc="The full document text to analyze.")
+    query = dspy.OutputField(
+        desc="A single relevant query ending in question mark that represents the document.",
+    )
+
+
+# inspired by STORM:
+# https://github.com/stanford-oval/storm/blob/5a61eec81d6811619ee291aa64dbbd3b5e01f385/knowledge_storm/storm_wiki/modules/knowledge_curation.py#L128
+class AgentQueryGenerator(dspy.Signature):
+    """You are a skilled research assistant. Your task is to read the given document and generate a single query that maximizes retrieval effectiveness metrics i.e nDCG.
+
+    Instructions:
+    - Create one clear and concise query using only the exact words and phrases from the document.
+    - Do not use synonyms or rephrase; stick strictly to the document's language.
+    - The query should be well-formed, relevant, and end with a question mark.
+    - Use question types like "Why," "Who," "When," "Where," "Which," or "How," based on the document's content.
+    """
 
     document = dspy.InputField(desc="The full document text to analyze.")
     query = dspy.OutputField(
@@ -262,8 +280,11 @@ def generate_queries(
     # Define strategies
     strategies = {
         # "Zero-shot": SimpleDocumentToQuery,
-        "CoT": dspy.ChainOfThought(
-            DocumentToQuery, use_tqdm=True, rationale_type=rationale_type_CoT
+        # "CoT": dspy.ChainOfThought(
+        #     DocumentToQuery, use_tqdm=True, rationale_type=rationale_type_CoT
+        # ),
+        "Agent": dspy.ChainOfThought(
+            AgentQueryGenerator, use_tqdm=True, rationale_type=rationale_type_CoT
         ),
     }
 
@@ -300,11 +321,16 @@ def generate_queries(
             if not batch_prompts:
                 continue
 
-            outputs = predictor.batch(batch_prompts)
-            batch_generations = [
-                {"doc_id": d_id, "query": output.query}
-                for d_id, output in zip(batch_doc_ids, outputs)
-            ]
+            try:
+                outputs = predictor.batch(batch_prompts)
+                batch_generations = [
+                    {"doc_id": d_id, "query": getattr(output, "query", None)}
+                    for d_id, output in zip(batch_doc_ids, outputs)
+                    if output and output.query
+                ]
+            except Exception as e:
+                print(f"Error in batch {batch_idx}: {e}")
+                continue
 
             processed_generations.extend(batch_generations)
 
@@ -321,12 +347,30 @@ def generate_queries(
         print(f"Completed and saved results for {strategy_name}")
 
 
-
 def main():
 
     args = parse_args()
     disable_warnings()
     download_queries(args.data_dir)
+
+    # datasets = [
+    #     # "nfcorpus",
+    #     # "trec-covid",
+    #     # "hotpotqa",
+    #     "fiqa",
+    #     # "arguana",
+    #     # "webis-touche2020",
+    #     # "dbpedia-entity",
+    #     # "scidocs",
+    #     # "fever",
+    #     # "climate-fever",
+    #     # "scifact",
+    # ]
+
+    # for dataset in datasets:
+    #     print(f"Generating queries for {dataset} dataset.")
+    #     generate_queries(args.model_name, dataset, args.batch_size)
+
     generate_queries(args.model_name, args.dataset, args.batch_size)
 
 
