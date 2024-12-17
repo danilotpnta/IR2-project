@@ -6,7 +6,6 @@ from pyserini.search import get_qrels_file
 from .utils import TRECRun
 
 import logging
-import logging
 
 def run_trec_eval(run_file, qrels_file, relevance_threshold=1, remove_unjudged=False):
     args = [
@@ -19,20 +18,14 @@ def run_trec_eval(run_file, qrels_file, relevance_threshold=1, remove_unjudged=F
         "all_trec",
         "-m",
         "judged.10",
-        "-m",
-        "all_trec",
-        "-m",
-        "judged.10",
     ]
 
     if remove_unjudged:
         args.append("-remove-unjudged")
 
-
     args += [qrels_file, run_file]
 
     result = subprocess.run(args, stdout=subprocess.PIPE)
-
 
     metrics = {}
     for line in result.stdout.decode("utf-8").split("\n"):

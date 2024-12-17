@@ -185,3 +185,6 @@ data/*
 !config/*
 
 *.job
+
+!results/self-generated-dspy/**
+!results/from_downloaded/**
