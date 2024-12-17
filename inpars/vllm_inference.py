@@ -3,6 +3,7 @@ import os
 import json
 
 import torch
+from time import time
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 from vllm import LLM, SamplingParams
@@ -141,6 +142,9 @@ class VLLMQueryGenerator:
             else:
                 llm = self.model
 
+            loader_prompts = DataLoader(prompts[len(generations) :], batch_size=batch_size)
+            cache_every_n = 1000
+            step_nr = 0
             for d_ids, p in tqdm(
                 zip(loader_docid, loader_prompts),
                 desc="Generation",
@@ -149,7 +153,6 @@ class VLLMQueryGenerator:
             ):
                 # Get the outputs.
                 outputs = llm.generate(p, sampling_params, use_tqdm=use_tqdm_inner)
-
                 # Save the outputs.
                 generations |= {
                     d_id: (
@@ -160,8 +163,11 @@ class VLLMQueryGenerator:
                     for d_id, output in zip(d_ids, outputs)
                 }
 
-                with open(save_file, "w") as f:
-                    json.dump(generations, f)
+                step_nr += 1
+                if step_nr % cache_every_n == 0:
+                    logger.info('saving at step %d', step_nr) 
+                    with open(save_file, "w") as f:
+                        json.dump(generations, f)
         except (ValueError, RuntimeError) as e:
             # Catch-all mainly targeting the bug with prefix caching
             # TODO: Identify this issue eventually.
@@ -183,13 +189,10 @@ class VLLMQueryGenerator:
                 **lora_kwargs,
             )
 
-            loader_docid = DataLoader(
-                doc_ids[len(generations) :], batch_size=batch_size
-            )
-            loader_prompts = DataLoader(
-                prompts[len(generations) :], batch_size=batch_size
-            )
-
+            loader_docid = DataLoader(doc_ids[len(generations) :], batch_size=batch_size)
+            loader_prompts = DataLoader(prompts[len(generations) :], batch_size=batch_size)
+            cache_every_n = 1000
+            step_nr = 0
             for d_ids, p in tqdm(
                 zip(loader_docid, loader_prompts),
                 desc="Generation",
@@ -208,9 +211,11 @@ class VLLMQueryGenerator:
                     )
                     for d_id, output in zip(d_ids, outputs)
                 }
-
-                with open(save_file, "w") as f:
-                    json.dump(generations, f)
+                step_nr += 1
+                if step_nr % cache_every_n == 0:
+                    logger.info('saving at step %d', step_nr) 
+                    with open(save_file, "w") as f:
+                        json.dump(generations, f)
 
         return generations
 
