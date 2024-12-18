@@ -128,10 +128,10 @@ class InPars:
         if device is None:
             self.device = "cuda" if torch.cuda.is_available() else "cpu"
 
-        if 'llama' in base_model:
+        if 'llama' in base_model.lower():
             auth_token = os.environ['HF_TOKEN']
             self.tokenizer = AutoTokenizer.from_pretrained(
-                base_model, token = auth_token, padding_side='left' 
+                "meta-llama/Llama-3.1-8B-Instruct", token = auth_token, padding_side='left' 
             )
         else:
             self.tokenizer = AutoTokenizer.from_pretrained(

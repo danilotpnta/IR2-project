@@ -23,6 +23,34 @@ from inpars.cpo_dataset import load_cpo_dataset, DataConfig
 from .utils import count_parameters
 
 
+# Custom TrainerCallback to open the model, save merged model and push to hub
+class CustomCallback(TrainerCallback):
+    def __init__(self, model_args, model, tokenizer):
+        self.model_args = model_args
+        self.model = model
+        self.tokenizer = tokenizer
+
+    def on_train_begin(self, args, state, control, **kwargs):
+        if args.do_train and args.local_rank in [-1, 0] and args.logging_steps > 0 and state.global_step % args.logging_steps == 0:
+            model_path = os.path.join(args.output_dir, "model" if self.model_args.save_merged else "adapter_model")
+            save_method = f"merged_{self.model_args.save_precision}" if self.model_args.save_merged else "lora"
+            if self.model_args.save_merged and self.model_args.save_precision == '4bit':
+                save_method += '_forced'
+            self.model.save_pretrained_merged(
+                model_path,
+                self.tokenizer,
+                save_method=save_method,
+            )
+            logger.info(f"Model saved at {model_path}")
+            if self.model_args.repo_id:
+                self.model.push_to_hub_merged(
+                    self.model_args.repo_id,
+                    self.tokenizer,
+                    save_method=save_method,
+                )
+                logger.info(f"Model pushed to hub as {self.model_args.repo_id}")                
+            exit()
+
 @dataclass
 class ModelArguments:
     model_name_or_path: str = field(
@@ -153,6 +181,7 @@ def train(
         args=cpo_config,
         optimizers=(optimizer, scheduler),
         train_dataset=train_dataset,
+        # callbacks=[CustomCallback(model_args, model, model_args.tokenizer)],
     )
     logger.info(
         f"Number of total parameters: {count_parameters(model, lambda _: True)/10**6:0.1f}M"

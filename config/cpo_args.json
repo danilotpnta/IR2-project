@@ -24,7 +24,7 @@
     "dataset_cache": "/scratch-shared/scur2577/cpo_output/msmarco_document",
     "peft_config_path": "/home/scur2577/IR2-project/config/peft_config.json",
     "resume_from_checkpoint": null,
-    "save_merged": false,
+    "save_merged": true,
     "save_precision": "16bit",
-    "repo_id": "inpars-plus/Meta-Llama-3.1-8B-Instruct_merged-16bit_CPO_MSMARCO"
+    "repo_id": "inpars-plus/Meta-Llama-3.1-8B_merged-16bit_CPO_MSMARCO"
 }
