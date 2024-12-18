@@ -44,6 +44,7 @@ def parse_args():
             'meta-llama/Llama-3.1-8B',
             'meta-llama/Meta-Llama-3.1-8B-Instruct',
             'inpars-plus/Meta-Llama-3.1-8B-Instruct_merged-16bit_CPO_BEIR',
+            'neuralmagic/Llama-3.1-Nemotron-70B-Instruct-HF-FP8-dynamic',
         ],
         default='EleutherAI/gpt-j-6B',
         help="Choose query generation model. "
@@ -138,6 +139,7 @@ def generate_queries(prompt_type:str, dataset:str, model:str, output_path:str, f
     logging.info(f'------Starting query generation : {prompt_type}------')
     start_generation = time.time()
 
+    cache_path = f"{os.path.dirname(output_path)}/cache"
     args = [
         "python", "-m", "inpars.generate",
         f"--prompt={prompt_type}",
@@ -147,6 +149,7 @@ def generate_queries(prompt_type:str, dataset:str, model:str, output_path:str, f
         f"--base_model={model}",
         f"--output={output_path}",
         f"--seed={seed}",
+        f"--cache_dir={cache_path}",
     ]
     if use_vllm:
         args.append("--use_vllm")
