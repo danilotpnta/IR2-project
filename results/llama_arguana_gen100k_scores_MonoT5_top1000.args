@@ -1,0 +1,1 @@
+--data_dir=/scratch-shared/scur2850/inpars/llama_arguana_gen100k_scores_MonoT5_top1000 --dataset=arguana --generationLLM=meta-llama/Meta-Llama-3.1-8B-Instruct --reranker=castorini/monot5-3b-msmarco-10k --rerank_topk=1000 --seed=1 --filter_options=scores --max_generations=100_000 --prompt_options=inpars --use_vllm --fp16 --generate --filter --triples --finetune --rerank --evaluate
