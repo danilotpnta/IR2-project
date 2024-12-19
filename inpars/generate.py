@@ -30,7 +30,12 @@ if __name__ == "__main__":
         help="The dataset source: ir_datasets or pyserini",
     )
     parser.add_argument("--n_fewshot_examples", type=int, default=2)
-    parser.add_argument("--n_generated_queries", type=int, default=1, help="Number of queries to generate per document. Current implementation provides examples which only shuffle the example query words.")
+    parser.add_argument(
+        "--n_generated_queries",
+        type=int,
+        default=1,
+        help="Number of queries to generate per document. Current implementation provides examples which only shuffle the example query words.",
+    )
     parser.add_argument("--max_doc_length", default=256, type=int, required=False)
     parser.add_argument("--max_query_length", default=200, type=int, required=False)
     parser.add_argument("--max_prompt_length", default=2048, type=int, required=False)
@@ -44,11 +49,13 @@ if __name__ == "__main__":
     parser.add_argument("--torch_compile", action="store_true")
     parser.add_argument("--tf", action="store_true")
     parser.add_argument("--output", type=str, required=True)
-    parser.add_argument("--cache_dir", type=str, default='cache')
+    parser.add_argument("--cache_dir", type=str, default="cache")
     parser.add_argument("--seed", type=int, default=1)
     parser.add_argument("--device", type=str, default=None)
     parser.add_argument("--only_generate_prompt", action="store_true")
-    parser.add_argument("--use_vllm", action="store_true", help="Use VLLM for query generation")
+    parser.add_argument(
+        "--use_vllm", action="store_true", help="Use VLLM for query generation"
+    )
     # parser.add_argument('--verbose', action='store_true')
     args = parser.parse_args()
     set_seed(args.seed)
@@ -63,15 +70,19 @@ if __name__ == "__main__":
         dataset = pd.DataFrame(dataset)
 
     # May need to lift this restriction in the future
-    if args.max_generations > len(dataset):
-        args.max_generations = len(dataset)
+    # if args.max_generations > len(dataset):
+    # args.max_generations = len(dataset)
+    corpus_len = len(dataset)
+    if args.max_generations > corpus_len:
+        dataset = pd.concat(
+            [dataset, dataset.sample(args.max_generations - corpus_len, replace=True)],
+            ignore_index=True,
+        )
 
-    dataset = dataset.sample(args.max_generations)
-
-    if args.n_fewshot_examples >= len(dataset):
+    if args.n_fewshot_examples >= corpus_len:
         raise Exception(
             f"Number of few-shot examples must be higher than the number of documents \
-            ({args.n_fewshot_examples} >= {len(dataset)})"
+            ({args.n_fewshot_examples} >= {corpus_len})"
         )
 
     generator = InPars(
@@ -102,12 +113,12 @@ if __name__ == "__main__":
         batch_size=args.batch_size,
         cache_dir=args.cache_dir,
     )
-    dataset['query'] = [example['query'] for example in generated]
-    dataset['log_probs'] = [example['log_probs'] for example in generated]
-    dataset['prompt_text'] = [example['prompt_text'] for example in generated]
-    dataset['doc_id'] = [example['doc_id'] for example in generated]
-    dataset['fewshot_examples'] = [example['fewshot_examples'] for example in generated]
-    dataset.to_json(args.output, orient='records', lines=True)
+    dataset["query"] = [example["query"] for example in generated]
+    dataset["log_probs"] = [example["log_probs"] for example in generated]
+    dataset["prompt_text"] = [example["prompt_text"] for example in generated]
+    dataset["doc_id"] = [example["doc_id"] for example in generated]
+    dataset["fewshot_examples"] = [example["fewshot_examples"] for example in generated]
+    dataset.to_json(args.output, orient="records", lines=True)
 
     del generator
     empty_cache()

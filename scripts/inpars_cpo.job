@@ -3,7 +3,7 @@
 #SBATCH --gpus=1
 #SBATCH --job-name=pipeline
 #SBATCH --time=32:00:00
-#SBATCH --array=1-4%4
+#SBATCH --array=1-2%2
 #SBATCH --output=/scratch-shared/scur2850/logs/inpars_cpo_%A_%a.out
 
 
@@ -17,7 +17,7 @@ source $PROJECT_ROOT/scripts/snellius_setup.sh
 setup $PROJECT_ROOT
 
 SCRIPT_PATH="$PROJECT_ROOT/scripts/inpars_cpo.job"
-ARGS_PATH="$PROJECT_ROOT/scripts/inpars_cpo_70b.txt"
+ARGS_PATH="$PROJECT_ROOT/scripts/inpars_cpo_msmarco_monot5.txt"
 # read the arguments from the file corresponding to the array index
 ARGS=$(cat $ARGS_PATH | head -n $SLURM_ARRAY_TASK_ID | tail -n 1)
 # find the data_dir from the arguments

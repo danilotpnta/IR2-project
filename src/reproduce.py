@@ -245,7 +245,7 @@ def generate_triples(filtered_path:str, dataset:str, output_path:str, seed:int) 
         return
 
     generation_time = time.time() - start_generation
-    logging.info(f'Triple generation took : {generation_time} seconds.\n')
+    logging.info(f'Triplet generation took : {generation_time} seconds.\n')
 
 def train_reranker(triples_path:str, ranker_model:str, output_path, fp16:bool, seed:int) -> None:
     logging.info(f'------Starting reranker training of : {triples_path}------')
@@ -260,7 +260,7 @@ def train_reranker(triples_path:str, ranker_model:str, output_path, fp16:bool, s
         f"--seed={seed}",
     ]
     if fp16:
-        args.append("--fp16")
+        args.append("--bf16")
 
     try:
         process = subprocess.run(args, stdout=subprocess.PIPE, text=True)

@@ -152,22 +152,19 @@ if __name__ == "__main__":
     training_args.do_eval = False
     set_seed(training_args.seed)
 
-    total_examples = None
-    if training_args.max_steps > 0:
-        total_examples = (
-            training_args.gradient_accumulation_steps
-            * training_args.per_device_train_batch_size
-            * training_args.max_steps
-            * torch.cuda.device_count()
-        )
-
     config = AutoConfig.from_pretrained(args.base_model)
     tokenizer = AutoTokenizer.from_pretrained(args.base_model)
-    seq2seq = any([
-        True
-        for architecture in config.architectures
-        if "ForConditionalGeneration" in architecture
-        ]) if hasattr(config, 'architectures') and config.architectures is not None else False
+    seq2seq = (
+        any(
+            [
+                True
+                for architecture in config.architectures
+                if "ForConditionalGeneration" in architecture
+            ]
+        )
+        if hasattr(config, "architectures") and config.architectures is not None
+        else False
+    )
 
     if seq2seq:
         model = AutoModelForSeq2SeqLM.from_pretrained(args.base_model)
@@ -218,6 +215,18 @@ if __name__ == "__main__":
     else:
         raise Exception("We must define a triples or a pairs file.")
 
+    total_examples = None
+    if training_args.max_steps > 0:
+        total_examples = (
+            training_args.gradient_accumulation_steps
+            * training_args.per_device_train_batch_size
+            * training_args.max_steps
+            * torch.cuda.device_count()
+        )
+
+    if training_args.num_train_epochs > 0:
+        total_examples = None
+
     if total_examples:
         dataset["train"] = dataset["train"].shuffle().select(range(total_examples))
 
@@ -235,10 +244,10 @@ if __name__ == "__main__":
         train_dataset=dataset["train"],
         data_collator=data_collator,
     )
-    
+
     train_metrics = trainer.train()
     trainer.save_model(training_args.output_dir)
     trainer.save_state()
-    trainer.save_metrics('train', train_metrics.metrics)
-    
+    trainer.save_metrics("train", train_metrics.metrics)
+
     torch.cuda.empty_cache()
