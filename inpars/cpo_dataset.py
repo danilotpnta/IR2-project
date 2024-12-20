@@ -606,11 +606,30 @@ def build_cpo_dataset(
     # load the dataset
     if not has_docs_queries:
         # sample num_samples document-query pairs from the dataframe
+        if num_samples > len(dataset):
+            logging.warning(
+                f"Number of samples ({num_samples}) exceeds size of dataset ({len(dataset)}). Only {len(dataset)} examples will be considered."
+            )
         samples = (
             dataset
             if num_samples > len(dataset)
             else dataset.sample(num_samples, replace=False, random_state=seed)
         )  # .dropna()
+
+        # TODO: Eventually lift this restriction once we stop using doc_ids as keys?
+        #  samples = (
+        #     dataset.sample(num_samples, replace=False, random_state=seed)
+        #     if num_samples <= len(dataset)
+        #     else pd.concat(
+        #         [
+        #             dataset,
+        #             dataset.sample(
+        #                 num_samples - len(dataset), replace=True, random_state=seed
+        #             ),
+        #         ],
+        #         ignore_index=True,
+        #     )
+        # )
 
         output["doc_ids"] = samples["doc_id"].tolist()
         for row in samples.itertuples():
