@@ -12,6 +12,7 @@ from transformers import (
     AutoModelForSequenceClassification,
     AutoModelForSeq2SeqLM,
     T5ForConditionalGeneration,
+    set_seed,
 )
 from . import utils
 from .dataset import load_corpus, load_queries
@@ -51,7 +52,7 @@ class Reranker:
             True
             for architecture in config.architectures
             if "ForConditionalGeneration" in architecture
-        )
+        ) if hasattr(config, 'architectures') and config.architectures is not None else False
         if seq2seq:
             if "flan" in model_name_or_path:
                 return FLANT5Reranker(model_name_or_path, **kwargs)
@@ -130,7 +131,8 @@ class MonoT5Reranker(Reranker):
                 padding=True,
                 truncation=True,
                 return_tensors="pt",
-                max_length=self.tokenizer.model_max_length,
+                # some models have undefined max length, e.g. deberta-v3
+                max_length=min(self.tokenizer.model_max_length, 1024),
                 pad_to_multiple_of=(8 if self.torch_compile else None),
             ).to(self.device)
             output = self.model.generate(
@@ -197,7 +199,7 @@ class MonoBERTReranker(Reranker):
                 padding=True,
                 truncation="only_second",
                 return_tensors="pt",
-                max_length=self.tokenizer.model_max_length,
+                max_length=min(self.tokenizer.model_max_length, 1024),
             ).to(self.device)
             output = self.model(**tokens)[0]
             scores += output.cpu().detach().tolist()
@@ -263,7 +265,10 @@ if __name__ == "__main__":
         type=int,
         help="Top-k documents to be reranked for each query.",
     )
+    parser.add_argument("--seed", default=1, type=int, help="Random seed.")
     args = parser.parse_args()
+
+    set_seed(args.seed)
 
     if args.dataset:
         corpus = load_corpus(args.dataset, source=args.dataset_source)

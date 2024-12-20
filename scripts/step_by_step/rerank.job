@@ -1,0 +1,72 @@
+#!/bin/bash
+
+#SBATCH --partition=gpu_a100
+#SBATCH --gpus=1
+
+#SBATCH --job-name=InPars-GEN
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=16
+#SBATCH --time=00:59:00
+#SBATCH --output=/scratch-shared/scur2850/logs/rerank_%A.out
+
+#SBATCH --ear=on
+#SBATCH --ear-policy=monitoring
+#SBATCH --ear-verbose=1
+
+date
+export HF_HOME="/scratch-shared/$USER"
+export GPU_COUNT=$(nvidia-smi --list-gpus | wc -l)
+
+# make sure the correct modules are used and that the virtual environment is active
+PROJECT_ROOT=/home/$USER/IR2-project
+source $PROJECT_ROOT/scripts/snellius_setup.sh
+setup $PROJECT_ROOT
+cd $PROJECT_ROOT
+
+STEP_NAME=rerank
+# fill in template variables
+LOG_PATH="/scratch-shared/scur2850/logs/$STEP_NAME"_"$SLURM_JOB_ID.out"
+SCRIPT_PATH=$PROJECT_ROOT/scripts/step_by_step/$STEP_NAME.job
+
+# NOTE: make sure this is consistent over all steps
+RUN_NAME=InPars-MiniLM-L-6-v2
+OUTPUT_DIR=/scratch-shared/scur2850/inpars/$RUN_NAME
+mkdir -p $OUTPUT_DIR
+
+# ___________________
+# |    ARGUMENTS    |
+# ___________________
+
+DATASET=scifact # trec-covid
+DATASET_SOURCE=ir_datasets # ir_datasets, pyserini
+
+MODEL=$OUTPUT_DIR/$DATASET/reranker/ # cross-encoder/ms-marco-MiniLM-L-6-v2 microsoft/deberta-v3-large $OUTPUT_DIR/$DATASET/reranker/ # the trained model from the previous step
+OUTPUT=$OUTPUT_DIR/$DATASET-run.txt
+MAX_STEPS=256 # paper uses 156
+BATCH_SIZE=64
+TOP_K=100 # paper uses 1_000 but that takes forever
+# flags
+DTYPE=--fp16 # --fp16 or ""
+TORCH_COMPILE=--torch_compile # --torch_compile or ""
+
+# __________________
+# |      EXEC      |
+# __________________
+# create a directory for the logs and the output
+
+# rest of the script
+srun python -m inpars.rerank \
+--model $MODEL \
+--output_run $OUTPUT \
+--dataset $DATASET \
+--dataset_source $DATASET_SOURCE \
+--batch_size $BATCH_SIZE \
+--top_k $TOP_K \
+$DTYPE \
+$TORCH_COMPILE  \
+
+mkdir -p $OUTPUT_DIR/job_${STEP_NAME}_${SLURM_JOB_ID}
+# copy the script and the logs to the output directory.
+# This should be done regardless of the success of the job
+echo "Copying logs and script to $OUTPUT_DIR/job_${STEP_NAME}_${SLURM_JOB_ID}"
+cp $SCRIPT_PATH $LOG_PATH $OUTPUT_DIR/job_${STEP_NAME}_${SLURM_JOB_ID}

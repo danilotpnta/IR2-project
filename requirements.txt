@@ -292,3 +292,6 @@ bm25s==0.1.0
 pytest==8.3.3
 trl==0.12.1
 bitsandbytes>=0.44.0
+unsloth==2024.12.1
+peft==0.14.0
+vllm

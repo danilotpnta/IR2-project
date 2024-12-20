@@ -1,15 +1,22 @@
-from math import prod
-import os
 import csv
+import json
+import os
 import sys
+from math import prod
+from pathlib import Path
+from typing import Dict, List
+
 import ftfy
-import requests
 import pandas as pd
+import requests
+import torch
+from huggingface_hub import hf_hub_download, list_repo_files
 from tqdm.auto import tqdm
+from tqdm.contrib.concurrent import process_map
+from transformers import AutoTokenizer
 
 PREBUILT_RUN_URL = "https://huggingface.co/datasets/unicamp-dl/beir-runs/resolve/main/bm25/run.beir-v1.0.0-{dataset}-flat.trec"
 RUNS_CACHE_FOLDER = os.environ["HOME"] + "/.cache/inpars"
-
 
 
 # https://stackoverflow.com/a/62113293
@@ -94,13 +101,18 @@ class TRECRun:
         self.df.to_csv(path, index=False, sep="\t", header=False, float_format="%.15f")
 
 
-def _process_map_q(q):
-    return q.query_id, ftfy.fix_text(q.text)
+def _process_map_q(query):
+    return query.query_id, ftfy.fix_text(query.text)
 
 
-def _process_map_d(d):
-    id, d = d
-    return id, ftfy.fix_text(d.title + " " + d.body)
+def _process_map_d(document):
+    # In case of MSMarco
+    d = (
+        ftfy.fix_text(document.title + " " + document.body)
+        if hasattr(document, "body")
+        else ftfy.fix_text(document.text)
+    )
+    return document.doc_id, d
 
 
 def _process_map_p(document, doc_id, prompter, n_examples=3):
@@ -113,7 +125,7 @@ def count_parameters(model, predicate=lambda p: p.requires_grad):
     return params
 
 
-def get_optimal_cpu_count():
+def get_optimal_process_count() -> int:
     platform, pyver = sys.platform, sys.version_info.minor
     if pyver >= 13:
         return os.process_cpu_count() - 1
@@ -128,11 +140,9 @@ def get_optimal_cpu_count():
 
 
 # DSPy utils
-from transformers import AutoTokenizer
 
 
 def count_tokens(text, model_name="meta-llama/Llama-3.1-8B"):
-
     tokenizer = AutoTokenizer.from_pretrained(model_name)
     tokens = tokenizer.tokenize(text)
 
@@ -140,9 +150,6 @@ def count_tokens(text, model_name="meta-llama/Llama-3.1-8B"):
     print(f"Number of tokens: {num_tokens}")
 
     return num_tokens
-
-
-from huggingface_hub import list_repo_files, hf_hub_download
 
 
 def download_queries(data_dir: str, repo_id: str = "inpars/generated-data"):
@@ -169,10 +176,6 @@ def download_queries(data_dir: str, repo_id: str = "inpars/generated-data"):
     print(f"InPars queries downloaded and saved to {data_path}")
 
 
-import json
-from pathlib import Path
-from typing import Dict, List
-
 
 class ModelConfig:
     def __init__(self, config_path: str = "config/dspy_config.json"):
@@ -183,7 +186,6 @@ class ModelConfig:
         self.load_config()
 
     def load_config(self) -> None:
-
         with open(self.config_path, "r") as f:
             config = json.load(f)
 
@@ -202,3 +204,81 @@ class ModelConfig:
     def get_stop_words(self) -> List[str]:
         """Get list of stop words."""
         return self.stop_words
+
+
+def get_documents(dataset, documents, max_workers=1):
+    if max_workers == 1:
+        for doc in tqdm(
+            dataset.docs_store().get_many_iter(documents.keys()),
+            total=len(documents),
+            desc="Loading documents",
+        ):
+            documents[doc.doc_id] = (
+                ftfy.fix_text(doc.title + " " + doc.body)
+                if hasattr(doc, "body")
+                else ftfy.fix_text(doc.text)
+            )
+    else:
+        _docs = process_map(
+            _process_map_d,
+            dataset.docs_store().get_many_iter(documents.keys()),
+            chunksize=128,
+            total=len(documents),
+            desc="Loading documents",
+            max_workers=max_workers,
+        )
+        documents = {doc_id: doc for doc_id, doc in _docs}
+    return documents
+
+
+def get_queries(dataset, queries, max_workers=1):
+    if max_workers == 1:
+        for query in tqdm(
+            dataset.queries_iter(), total=len(queries), desc="Loading queries"
+        ):
+            queries[query.query_id] = ftfy.fix_text(query.text)
+
+    else:
+        _queries = process_map(
+            _process_map_q,
+            dataset.queries_iter(),
+            chunksize=128,
+            total=len(queries),
+            desc="Loading queries",
+            max_workers=max_workers,
+        )
+        queries = {query_id: query for query_id, query in _queries}
+    return queries
+
+
+def get_prompts(output, prompt, num_examples=3, max_workers=1):
+    documents = [data["target_doc_text"] for data in output["data"].values()]
+    ids = [doc_id for doc_id in output["data"]]
+
+    prompts = []
+    if max_workers == 1:
+        for _id, doc in tqdm(
+            zip(ids, documents), desc="Generating prompts", total=len(documents)
+        ):
+            prompts.append((_id, prompt.build(doc, n_examples=num_examples)))
+    else:
+        prompts = process_map(
+            _process_map_p,
+            documents,
+            ids,
+            [prompt] * len(documents),
+            [num_examples] * len(documents),
+            chunksize=128,
+            total=len(documents),
+            desc="Generating prompts",
+            max_workers=max_workers,
+        )
+
+    return prompts
+
+
+def parse_dtype(dtype: str):
+    if dtype == "auto" or dtype[-1] == "8":
+        return "auto"
+    else:
+        return getattr(torch, dtype)

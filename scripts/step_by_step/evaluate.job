@@ -1,0 +1,61 @@
+#!/bin/bash
+
+#SBATCH --partition=gpu_a100
+#SBATCH --gpus=1
+
+#SBATCH --job-name=InPars-GEN
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=16
+#SBATCH --time=00:59:00
+#SBATCH --output=/scratch-shared/scur2850/logs/evaluate_%A.out
+
+#SBATCH --ear=on
+#SBATCH --ear-policy=monitoring
+#SBATCH --ear-verbose=1
+
+date
+export HF_HOME="/scratch-shared/$USER"
+export GPU_COUNT=$(nvidia-smi --list-gpus | wc -l)
+
+# make sure the correct modules are used and that the virtual environment is active
+PROJECT_ROOT=/home/$USER/IR2-project
+source $PROJECT_ROOT/scripts/snellius_setup.sh
+setup $PROJECT_ROOT
+cd $PROJECT_ROOT
+
+STEP_NAME=evaluate
+# fill in template variables
+LOG_PATH="/scratch-shared/scur2850/logs/$STEP_NAME"_"$SLURM_JOB_ID.out"
+SCRIPT_PATH=$PROJECT_ROOT/scripts/step_by_step/$STEP_NAME.job
+
+# NOTE: make sure this is consistent over all steps
+RUN_NAME=InPars-MiniLM-L-6-v2
+OUTPUT_DIR=/scratch-shared/scur2850/inpars/$RUN_NAME
+mkdir -p $OUTPUT_DIR
+
+# ___________________
+# |    ARGUMENTS    |
+# ___________________
+
+DATASET=scifact # trec-covid
+RUN=$OUTPUT_DIR/$DATASET-run.txt
+OUTPUT=$OUTPUT_DIR/$DATASET-eval.json
+STORE_JSON=--json
+
+# __________________
+# |      EXEC      |
+# __________________
+# create a directory for the logs and the output
+
+# rest of the script
+srun python -m inpars.evaluate \
+--dataset $DATASET \
+--run $RUN \
+--output_path $OUTPUT \
+$STORE_JSON
+
+mkdir -p $OUTPUT_DIR/job_${STEP_NAME}_${SLURM_JOB_ID}
+# copy the script and the logs to the output directory.
+# This should be done regardless of the success of the job
+echo "Copying logs and script to $OUTPUT_DIR/job_${STEP_NAME}_${SLURM_JOB_ID}"
+cp $SCRIPT_PATH $LOG_PATH $OUTPUT_DIR/job_${STEP_NAME}_${SLURM_JOB_ID}

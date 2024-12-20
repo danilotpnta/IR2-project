@@ -15,10 +15,10 @@ import json
 import pickle
 from pathlib import Path
 
-def _build_prompt(document, doc_id, prompter, cached_indices, n_examples=3):
+def _build_prompt(document, doc_id, prompter, n_examples=3):
     return prompter.build(
         document, n_examples=n_examples
-    ), doc_id if doc_id not in cached_indices else None
+    ), doc_id
 
 
 def load_examples(corpus, n_fewshot_examples):
@@ -74,6 +74,7 @@ class InPars:
         max_query_length=None,
         max_prompt_length=None,
         max_new_tokens=64,
+        bf16=False,
         fp16=False,
         int8=False,
         device=None,
@@ -81,6 +82,7 @@ class InPars:
         torch_compile=False,
         verbose=False,
         only_generate_prompt=False,
+        use_vllm=False,
     ):
         """
         Initializes the InPars object with the given parameters.
@@ -111,14 +113,25 @@ class InPars:
         self.verbose = verbose
         self.tf = tf
         self.only_generate_prompt = only_generate_prompt
+        self.use_vllm = use_vllm
+
+        if self.use_vllm:
+            try:
+                from . import vllm_inference
+            except ImportError:
+                Warning("""
+                        VLLM inference not available. Please install vllm first.
+                        
+                        Setting use_vllm to False""")
+                self.use_vllm = False
 
         if device is None:
             self.device = "cuda" if torch.cuda.is_available() else "cpu"
 
-        if 'llama' in base_model:
+        if 'llama' in base_model.lower():
             auth_token = os.environ['HF_TOKEN']
             self.tokenizer = AutoTokenizer.from_pretrained(
-                base_model, token = auth_token, padding_side='left' 
+                "meta-llama/Llama-3.1-8B-Instruct", token = auth_token, padding_side='left' 
             )
         else:
             self.tokenizer = AutoTokenizer.from_pretrained(
@@ -142,6 +155,9 @@ class InPars:
         )
 
         model_kwargs = {"revision": revision}
+        if bf16:
+            model_kwargs["torch_dtype"] = torch.bfloat16
+            model_kwargs["low_cpu_mem_usage"] = True
         if fp16:
             model_kwargs["torch_dtype"] = torch.float16
             model_kwargs["low_cpu_mem_usage"] = True
@@ -155,7 +171,12 @@ class InPars:
         if self.only_generate_prompt:
             return
 
-        if self.tf:
+        # if VLLM is used, the model is loaded in the generate method
+        if self.use_vllm:
+            self.model = base_model
+            self.model_kwargs = {"dtype": model_kwargs["torch_dtype"]}
+
+        elif self.tf:
             from transformers import TFAutoModelForCausalLM
 
             self.model = TFAutoModelForCausalLM.from_pretrained(
@@ -207,82 +228,75 @@ class InPars:
             import tensorflow as tf
 
         cache_dir = Path(cache_dir) / self.corpus
-        cache_dir.mkdir(exist_ok=True)
-        cache_file = cache_dir / f"{cache_name}.pkl"
+        cache_dir.mkdir(exist_ok=True, parents=True)
 
-        prompts_csv = cache_dir / f"{cache_name}_prompts.csv"
+        prompts_json = cache_dir / f"{cache_name}_prompts.json"
         results_csv = cache_dir / f"{cache_name}_results.csv"
 
-        # Try to load cached prompts
-        prompts = []
-        cached_indices = set()
-        if cache_file.exists():
+        prompts = None
+        if prompts_json.exists():
             try:
-                with open(cache_file, "rb") as f:
-                    cache_data = pickle.load(f)
-                    cached_prompts = cache_data.get("prompts", [])
-                    cached_doc_ids = cache_data.get("doc_ids", [])
+                with open(prompts_json, "r") as f:
+                    data = json.load(f)
+                prompts = [data[doc_id] for doc_id in doc_ids]
+            except Exception:
+                print("Could not load prompts from cache file, rebuilding ...")
+                prompts = None
 
-                    prompt_map = dict(zip(cached_doc_ids, cached_prompts))
-
-                    for idx, doc_id in enumerate(doc_ids):
-                        if doc_id in prompt_map:
-                            prompts.append(prompt_map[doc_id])
-                            cached_indices.add(idx)
-
-                    print(f"Loaded {len(cached_indices)} prompts from cache")
-            except Exception as e:
-                print(f"Error loading cache: {e}")
-                prompts = []
-                cached_indices = set()
-
-        new_prompts = process_map(
-            _build_prompt,
-            documents,
-            doc_ids,
-            [self.prompter] * len(documents),
-            [cached_indices] * len(documents),
-            [self.n_fewshot_examples] * len(documents),
-            chunksize=128,
-            total=len(documents),
-            desc="Building prompts",
-            disable=len(documents) > 1000,
-        )
-        new_doc_ids = [prompt[1] for prompt in new_prompts if prompt is not None]
-        new_prompts = [prompt[0] for prompt in new_prompts if prompt is not None]
-        prompts.extend(new_prompts)
-
-        # Update cache with new prompts
-        if new_prompts:
-            try:
-                if cache_file.exists():
-                    with open(cache_file, "rb") as f:
-                        cache_data = pickle.load(f)
-                else:
-                    cache_data = {"prompts": [], "doc_ids": []}
-
-                cache_data["prompts"].extend(new_prompts)
-                cache_data["doc_ids"].extend(new_doc_ids)
-
-                with open(cache_file, "wb") as f:
-                    pickle.dump(cache_data, f)
-                print(f"Cached {len(new_prompts)} new prompts")
-
-                if save_csv:
-                    prompts_df = pd.DataFrame(
-                        {
-                            "doc_id": cache_data["doc_ids"],
-                            "prompt": cache_data["prompts"],
-                        }
-                    )
-                    prompts_df.to_csv(prompts_csv, index=False)
-                    print(f"Saved prompts to {prompts_csv}")
-
-            except Exception as e:
-                print(f"Error updating cache: {e}")
+        if prompts is None:
+            print(f"Building prompts for {len(doc_ids)} documents")
+            prompts = process_map(
+                _build_prompt,
+                documents,
+                doc_ids,
+                [self.prompter] * len(doc_ids),
+                [self.n_fewshot_examples] * len(doc_ids),
+                chunksize=128,
+                total=len(doc_ids),
+                desc="Building prompts",
+                # disable=len(documents) > 1000,
+            )
+            # covert to dict for saving
+            prompts = {doc_id: prompt for prompt, doc_id in prompts}
+            with open(prompts_json, "w") as f:
+                json.dump(prompts, f)
+            prompts = [prompts[doc_id] for doc_id in doc_ids]
 
         if self.only_generate_prompt:
             return prompts
+
+        if self.use_vllm:
+            from .vllm_inference import generate_queries
+            results = generate_queries(
+                prompts=prompts,
+                doc_ids=doc_ids.values.tolist(),
+                model_name=self.model,
+                save_folder=cache_dir,
+                max_prompt_length=self.max_prompt_length,
+                max_tokens=self.max_new_tokens,
+                batch_size=batch_size,
+                use_tqdm_inner=True,
+                force=False,
+                logprobs=1,
+                **self.model_kwargs,
+                **generate_kwargs,
+            )
+            # results are in the format doc_id: (query, log_probs, cumulative_log_probs)
+            results = [
+                { # TODO: are we 100% sure we want to save the _same_ prompt for each query?
+                  # same for doc_text ...
+                    "query": results[doc_id][0],
+                    "log_probs": results[doc_id][1],
+                    "prompt_text": prompt_text,
+                    "doc_id": doc_id,
+                    "doc_text": document,
+                    "fewshot_examples": [
+                        example[0] for example in self.fewshot_examples
+                    ],
+                }
+                for doc_id, prompt_text, document in zip(doc_ids, prompts, documents)
+            ]
+            return results
 
         if self.tf:
             generate = tf.function(self.model.generate, jit_compile=True)

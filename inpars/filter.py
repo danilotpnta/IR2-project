@@ -4,13 +4,13 @@ import torch
 import getpass
 import argparse
 import numpy as np
-from datasets import load_dataset
 import requests
 from tqdm import tqdm
 from .rerank import Reranker
 from .dataset import load_corpus
 import random
 
+from transformers import set_seed
 from torch.cuda import empty_cache
 
 
@@ -112,6 +112,9 @@ if __name__ == "__main__":
         help="Keep only the question part of the query.",
     )
     parser.add_argument("--max_generations_considered", default=None, type=int)
+    parser.add_argument(
+        "--seed", type=int, default=1, help="Random seed for reproducibility."
+    )
 
     args = parser.parse_args()
     assert args.filter_strategy in ["scores", "reranker"]
@@ -145,7 +148,7 @@ if __name__ == "__main__":
     dataset = read_synthetic_data(args)
     
     # Shuffle dataset to be able to test different subsets if desired
-    random.seed(42)
+    set_seed(args.seed)
     random.shuffle(dataset)
     
     # If max_generations_considered is smaller than dataset size, take first N. 

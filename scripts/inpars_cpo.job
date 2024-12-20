@@ -1,0 +1,35 @@
+#!/bin/bash
+#SBATCH --partition=gpu_h100
+#SBATCH --gpus=1
+#SBATCH --job-name=pipeline
+#SBATCH --time=32:00:00
+#SBATCH --array=1-2%2
+#SBATCH --output=/scratch-shared/scur2850/logs/inpars_cpo_%A_%a.out
+
+
+date 
+
+# Setup environment
+PROJECT_ROOT=/home/$USER/IR2-project
+cd $PROJECT_ROOT
+
+source $PROJECT_ROOT/scripts/snellius_setup.sh
+setup $PROJECT_ROOT
+
+SCRIPT_PATH="$PROJECT_ROOT/scripts/inpars_cpo.job"
+ARGS_PATH="$PROJECT_ROOT/scripts/inpars_cpo_msmarco_monot5.txt"
+# read the arguments from the file corresponding to the array index
+ARGS=$(cat $ARGS_PATH | head -n $SLURM_ARRAY_TASK_ID | tail -n 1)
+# find the data_dir from the arguments
+DATA_DIR=$(echo $ARGS | sed -n 's/.*--data_dir=\([^ ]*\).*/\1/p')
+# create the data_dir if it does not exist
+mkdir -p $DATA_DIR
+# copy script and arguments to the data_dir
+cp $SCRIPT_PATH $DATA_DIR
+echo $ARGS > $DATA_DIR/arguments.txt
+
+echo
+echo "Starting job with arguments: $ARGS"
+echo
+
+srun python -m src.reproduce $ARGS

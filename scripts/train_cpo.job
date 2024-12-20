@@ -5,13 +5,9 @@
 
 #SBATCH --job-name=CPO_TRAIN
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=4
-#SBATCH --time=00:59:00
+#SBATCH --cpus-per-task=16
+#SBATCH --time=23:59:00
 #SBATCH --output=/scratch-shared/scur2850/logs/cpo_train_%A.out
-
-#SBATCH --ear=on
-#SBATCH --ear-policy=monitoring
-#SBATCH --ear-verbose=1
 
 date
 

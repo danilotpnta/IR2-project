@@ -5,9 +5,7 @@
 #SBATCH --time=35:00:00
 #SBATCH --output=logs/scifact_llama_end2end.out
 #SBATCH --error=logs/scifact_llama_end2end.err
-#SBATCH --ear=on
-#SBATCH --ear-policy=monitoring
-#SBATCH --ear-verbose=1
+
 
 date 
 
