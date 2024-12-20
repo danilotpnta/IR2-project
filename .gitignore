@@ -143,9 +143,10 @@ cython_debug/
 # Mac, ignore all DS_Store files
 .DS_Store
 
-query_ids_to_remove_from_eval.tsv
-IR2-env/
+# Dont add env files
+IR2-env*/
 
+# Avoid loading prescreening results
 cache/
 
 # snellius
@@ -154,12 +155,36 @@ logs/
 wandb/
 reranker/
 
-# trec-covid dataset ouputs
-tmp-run-trec-covid.txt
-topics-trec-covid.tsv
-trec-covid-queries-filtered.jsonl
-trec-covid-queries.jsonl
-trec-covid-triples.tsv
+# dataset ouputs
 cache_plus/
-trec-covid-queries_HF.jsonl
+*.txt
+!requirements.txt
+
+# this should avoid logging generate, filter, and rerank results
+*.jsonl
+*.json
+# trec-covid-queries-filtered.jsonl
+# trec-covid-queries_HF.jsonl
+# trec-covid-queries.jsonl
+
+*.tsv
+# topics-trec-covid.tsv
+# trec-covid-triples.tsv
+# query_ids_to_remove_from_eval.tsv
+
+# folder bin to test some scripts
+bin/
+
+# logs from the jobs
+logs/
+
+data/*
+!data/stats/
+
+# keep conf for uploader to HF
+!config/*
+
 *.job
+
+!results/self-generated-dspy/**
+!results/from_downloaded/**
