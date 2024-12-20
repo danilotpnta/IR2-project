@@ -4,9 +4,12 @@ import torch
 import getpass
 import argparse
 import numpy as np
+from datasets import load_dataset
+import requests
 from tqdm import tqdm
 from .rerank import Reranker
 from .dataset import load_corpus
+import random
 
 from torch.cuda import empty_cache
 
@@ -108,6 +111,7 @@ if __name__ == "__main__":
         action="store_true",
         help="Keep only the question part of the query.",
     )
+    parser.add_argument("--max_generations_considered", default=None, type=int)
 
     args = parser.parse_args()
     assert args.filter_strategy in ["scores", "reranker"]
@@ -117,10 +121,44 @@ if __name__ == "__main__":
         os.makedirs(hf_cache_dir, exist_ok=True)
         os.environ["HF_HOME"] = hf_cache_dir
 
-    dataset = read_synthetic_data(args)
-    model = None
+    # Derive prompting strategy from generated input data path
+    zeroshot = True if 'Zero-shot' in args.input else False
+    CoT = True if 'CoT' in args.input else False
+    if zeroshot and CoT:
+        assert "Both zeroshot and CoT in input path."
+    
+    # If path does not exist in current environment, try to download it from huggingface. Otherwise throw exception. 
+    if not os.path.exists(args.input) and (CoT or zeroshot):
+        os.makedirs(os.path.dirname(args.input), exist_ok=True)
+        try:
+            prompt_strategy = 'Zero-shot' if zeroshot else 'CoT'
+            response = requests.get(
+            f"https://huggingface.co/datasets/inpars-plus/generated-data/resolve/main/{args.dataset}/queries_Llama-3.1-8B_{prompt_strategy}.jsonl"
+            )
+            with open(args.input, "wb") as f:
+                f.write(response.content)
 
-    if args.filter_strategy == "scores":
+            print("downloaded data!")
+        except Exception as e:
+            assert "jsonl file with synthetic data cannot be found."    
+
+    dataset = read_synthetic_data(args)
+    
+    # Shuffle dataset to be able to test different subsets if desired
+    random.seed(42)
+    random.shuffle(dataset)
+    
+    # If max_generations_considered is smaller than dataset size, take first N. 
+    if args.max_generations_considered:
+        if len(dataset) > args.max_generations_considered:
+            dataset = dataset[:args.max_generations_considered]
+
+    model = None
+    if len(dataset) <= args.keep_top_k:
+        # Give all an arbitrary score, no filtering is needed.  
+        for line in tqdm(dataset):
+            line["score"] = 1.0
+    elif args.filter_strategy == "scores":
         for line in tqdm(dataset):
             line["score"] = np.mean(line["log_probs"])
     else:
