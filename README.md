@@ -40,6 +40,9 @@ setup $PWD
 # Install the required packages
 pip install -e ".[all]"
 
+# Additonally, if you want to use the vllm capabilities of the toolkit:
+pip install vllm
+
 # It might be faster to install using the requirements.txt file
 pip install -r requirements.txt
 ```
