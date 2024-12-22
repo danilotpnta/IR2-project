@@ -49,7 +49,7 @@ pip install -r requirements.txt
 
 ### Troubleshooting
 
-When installing in Snellius you may want to isntall the packages using the `--no-cache-dir` flag. This will prevent the installation from using the cache and may solve some issues.
+When installing in Snellius you may want to install the packages using the `--no-cache-dir` flag. This will prevent the installation from using the cache and may solve some issues.
 
 ```bash
 pip install --no-cache-dir -r requirements.txt
