@@ -37,28 +37,95 @@ prediction_tokens = {
 
 class Reranker:
     def __init__(
-        self, silent=False, batch_size=8, fp16=False, torchscript=False, device=None
+        self, silent=False, batch_size=8, fp16=False, device=None
     ):
         self.silent = silent
         self.batch_size = batch_size
         self.fp16 = fp16
-        self.torchscript = torchscript
         self.device = device
 
     @classmethod
     def from_pretrained(cls, model_name_or_path, **kwargs):
         config = AutoConfig.from_pretrained(model_name_or_path)
-        seq2seq = any(
-            True
-            for architecture in config.architectures
-            if "ForConditionalGeneration" in architecture
-        ) if hasattr(config, 'architectures') and config.architectures is not None else False
+        seq2seq = (
+            any(
+                True
+                for architecture in config.architectures
+                if "ForConditionalGeneration" in architecture
+            )
+            if hasattr(config, "architectures") and config.architectures is not None
+            else False
+        )
         if seq2seq:
             if "flan" in model_name_or_path:
                 return FLANT5Reranker(model_name_or_path, **kwargs)
             return MonoT5Reranker(model_name_or_path, **kwargs)
         return MonoBERTReranker(model_name_or_path, **kwargs)
 
+
+class ModernBERTReranker(Reranker):
+    name: str = "ModernBERT"
+
+    def __init__(
+        self,
+        model_name_or_path="answerdotai/ModernBERT-base",
+        torch_compile=True,
+        max_length=2048,
+        **kwargs,
+    ):
+        super().__init__(**kwargs)
+        if not self.device:
+            self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        model_args = {}
+        if self.fp16:
+            model_args["torch_dtype"] = torch.bfloat16
+        self.model = AutoModelForSequenceClassification.from_pretrained(
+            model_name_or_path,
+            num_labels=2,
+            **model_args,
+        )
+        self.max_length = max_length
+        self.model.to(self.device)
+        if torch_compile:
+            self.model = torch.compile(self.model)
+        self.tokenizer = AutoTokenizer.from_pretrained(model_name_or_path)
+
+    def rescore(self, pairs):
+        """
+        Calculating scores for a batch of (query, doc) pairs
+        Parameters
+        ----------
+        pairs: dict or transformers.BatchEncoding
+            the input (query, document) pairs tokenized by a HuggingFace's tokenizer.
+        Returns
+        -------
+        torch.Tensor:
+            a vector whose each element is the score (based on the CLS vector) of a (query, document) pair
+        """
+        return self.model(**pairs).logits[:, 0]
+
+    def forward(self, pos_pairs, neg_pairs, labels):
+        """
+
+        To train the Cross-Encoder, we can optimize the model with a (binary) cross-entropy loss. As we are using a contrastive loss, the model's predictions are the scores for both the positive pairs and the negative pairs. For a given pair of (query, positive document) and (query, negative document), the model should "choose" the positive document. This can be done by setting the target label as the one matching the index of the positive document.
+
+        Parameters
+        ----------
+        pos_pairs: dict or transformers.BatchEncoding
+            pairs of (query, positive document) tokenized by a HuggingFace's tokenizer.
+        neg_pairs: dict or transformers.BatchEncoding
+            pairs of (query, negative document) tokenized by a HuggingFace's tokenizer.
+
+        Returns
+        -------
+        A tuple of (loss, pos_scores, neg_scores) which are the value of the cross entropy loss, the estimated score of
+        (query, positive document) pairs and the estimated score of (query, negative document) pairs.
+        The goal is to optimize for the loss
+        """
+        pos_scores = self.rescore(pos_pairs)
+        neg_scores = self.rescore(neg_pairs)
+        scores = torch.column_stack([pos_scores, neg_scores])
+        return self.loss(scores, labels), pos_scores, neg_scores
 
 class MonoT5Reranker(Reranker):
     name: str = "MonoT5"
@@ -69,7 +136,7 @@ class MonoT5Reranker(Reranker):
         model_name_or_path="castorini/monot5-base-msmarco-10k",
         token_false=None,
         token_true=True,
-        torch_compile=False,
+        torch_compile=True,
         **kwargs,
     ):
         super().__init__(**kwargs)
@@ -85,7 +152,9 @@ class MonoT5Reranker(Reranker):
         if torch_compile:
             self.model = torch.compile(self.model)
         self.model.to(self.device)
-        self.tokenizer = AutoTokenizer.from_pretrained(model_name_or_path, use_fast=True)
+        self.tokenizer = AutoTokenizer.from_pretrained(
+            model_name_or_path, use_fast=True
+        )
         self.token_false_id, self.token_true_id = self.get_prediction_tokens(
             model_name_or_path,
             self.tokenizer,
@@ -305,12 +374,9 @@ if __name__ == "__main__":
         fp16=args.fp16,
         device=args.device,
         torch_compile=args.torch_compile,
-        # torchscript=args.torchscript,
     )
 
     run = utils.TRECRun(input_run)
     run.rerank(model, queries, corpus, top_k=args.top_k)
     run.save(args.output_run)
-
-    del model 
     torch.cuda.empty_cache()
