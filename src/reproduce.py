@@ -257,6 +257,8 @@ def train_reranker(triples_path:str, ranker_model:str, output_path, fp16:bool, s
         f"--base_model={ranker_model}",
         f"--output_dir={output_path}",
         "--max_steps=156",
+        # "--num_train_epochs=1.0", 
+        "--torch_compile",
         f"--seed={seed}",
     ]
     if fp16:

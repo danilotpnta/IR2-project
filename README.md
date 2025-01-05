@@ -40,13 +40,16 @@ setup $PWD
 # Install the required packages
 pip install -e ".[all]"
 
+# Additonally, if you want to use the vllm capabilities of the toolkit:
+pip install vllm
+
 # It might be faster to install using the requirements.txt file
 pip install -r requirements.txt
 ```
 
 ### Troubleshooting
 
-When installing in Snellius you may want to isntall the packages using the `--no-cache-dir` flag. This will prevent the installation from using the cache and may solve some issues.
+When installing in Snellius you may want to install the packages using the `--no-cache-dir` flag. This will prevent the installation from using the cache and may solve some issues.
 
 ```bash
 pip install --no-cache-dir -r requirements.txt

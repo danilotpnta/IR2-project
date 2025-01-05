@@ -77,6 +77,7 @@ class VLLMQueryGenerator:
         enable_chunked_prefill=True,
         force=True,
         seed=SEED,
+        cache_every_n=32,
         **kwargs,
     ):
         save_folder = os.path.join(save_folder, model_name)
@@ -143,7 +144,6 @@ class VLLMQueryGenerator:
                 llm = self.model
 
             loader_prompts = DataLoader(prompts[len(generations) :], batch_size=batch_size)
-            cache_every_n = 1000
             step_nr = 0
             for d_ids, p in tqdm(
                 zip(loader_docid, loader_prompts),
@@ -191,7 +191,6 @@ class VLLMQueryGenerator:
 
             loader_docid = DataLoader(doc_ids[len(generations) :], batch_size=batch_size)
             loader_prompts = DataLoader(prompts[len(generations) :], batch_size=batch_size)
-            cache_every_n = 1000
             step_nr = 0
             for d_ids, p in tqdm(
                 zip(loader_docid, loader_prompts),
