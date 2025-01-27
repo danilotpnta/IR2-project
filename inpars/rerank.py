@@ -14,8 +14,10 @@ from transformers import (
     T5ForConditionalGeneration,
     set_seed,
 )
+from peft import PeftModel
 from . import utils
 from .dataset import load_corpus, load_queries
+import logging
 
 # Based on https://github.com/castorini/pygaggle/blob/f54ae53d6183c1b66444fa5a0542301e0d1090f5/pygaggle/rerank/base.py#L63
 prediction_tokens = {
@@ -36,9 +38,7 @@ prediction_tokens = {
 
 
 class Reranker:
-    def __init__(
-        self, silent=False, batch_size=8, fp16=False, device=None
-    ):
+    def __init__(self, silent=False, batch_size=8, fp16=False, device=None):
         self.silent = silent
         self.batch_size = batch_size
         self.fp16 = fp16
@@ -57,10 +57,15 @@ class Reranker:
             else False
         )
         if seq2seq:
+            logging.error(f"SEQ2SEQ={seq2seq}")
             if "flan" in model_name_or_path:
                 return FLANT5Reranker(model_name_or_path, **kwargs)
             return MonoT5Reranker(model_name_or_path, **kwargs)
-        return MonoBERTReranker(model_name_or_path, **kwargs)
+        return (
+            ModernBERTReranker(model_name_or_path, **kwargs)
+            if "modernbert" in str(model_name_or_path).lower()
+            else MonoBERTReranker(model_name_or_path, **kwargs)
+        )
 
 
 class ModernBERTReranker(Reranker):
@@ -80,17 +85,20 @@ class ModernBERTReranker(Reranker):
         if self.fp16:
             model_args["torch_dtype"] = torch.bfloat16
         self.model = AutoModelForSequenceClassification.from_pretrained(
-            model_name_or_path,
-            num_labels=2,
+            "answerdotai/ModernBERT-base",
+            num_labels=1,
             **model_args,
         )
+        # self.model = PeftModel.from_pretrained(self.model, model_name_or_path)
+        # self.model = self.model.merge_and_unload()
         self.max_length = max_length
         self.model.to(self.device)
         if torch_compile:
             self.model = torch.compile(self.model)
-        self.tokenizer = AutoTokenizer.from_pretrained(model_name_or_path)
+        self.tokenizer = AutoTokenizer.from_pretrained("answerdotai/ModernBERT-base")
 
-    def rescore(self, pairs):
+    @torch.inference_mode()
+    def rescore(self, pairs: List[List[str]]):
         """
         Calculating scores for a batch of (query, doc) pairs
         Parameters
@@ -102,30 +110,26 @@ class ModernBERTReranker(Reranker):
         torch.Tensor:
             a vector whose each element is the score (based on the CLS vector) of a (query, document) pair
         """
-        return self.model(**pairs).logits[:, 0]
+        scores = []
+        for batch in tqdm(
+            utils.chunks(pairs, self.batch_size),
+            disable=self.silent,
+            desc="Rescoring",
+            total=ceil(len(pairs) / self.batch_size),
+        ):
+            batch = [(query, text) for (query, text) in batch]
+            tokens = self.tokenizer(
+                batch,
+                padding=True,
+                truncation=True,
+                return_tensors="pt",
+                max_length=min(self.tokenizer.model_max_length, 1024),
+                pad_to_multiple_of=256,
+            ).to(self.device)
+            output = self.model(**tokens)
+            scores += output[0].tolist()
+        return scores
 
-    def forward(self, pos_pairs, neg_pairs, labels):
-        """
-
-        To train the Cross-Encoder, we can optimize the model with a (binary) cross-entropy loss. As we are using a contrastive loss, the model's predictions are the scores for both the positive pairs and the negative pairs. For a given pair of (query, positive document) and (query, negative document), the model should "choose" the positive document. This can be done by setting the target label as the one matching the index of the positive document.
-
-        Parameters
-        ----------
-        pos_pairs: dict or transformers.BatchEncoding
-            pairs of (query, positive document) tokenized by a HuggingFace's tokenizer.
-        neg_pairs: dict or transformers.BatchEncoding
-            pairs of (query, negative document) tokenized by a HuggingFace's tokenizer.
-
-        Returns
-        -------
-        A tuple of (loss, pos_scores, neg_scores) which are the value of the cross entropy loss, the estimated score of
-        (query, positive document) pairs and the estimated score of (query, negative document) pairs.
-        The goal is to optimize for the loss
-        """
-        pos_scores = self.rescore(pos_pairs)
-        neg_scores = self.rescore(neg_pairs)
-        scores = torch.column_stack([pos_scores, neg_scores])
-        return self.loss(scores, labels), pos_scores, neg_scores
 
 class MonoT5Reranker(Reranker):
     name: str = "MonoT5"
@@ -248,6 +252,8 @@ class MonoBERTReranker(Reranker):
             model_name_or_path,
             **model_args,
         )
+        if torch_compile:
+            self.model = torch.compile(self.model)
         self.model.to(self.device)
         # Currently I use use_fast=True because of errors/warnings, check whether this makes a difference
         self.tokenizer = AutoTokenizer.from_pretrained(model_name_or_path)
@@ -370,7 +376,7 @@ if __name__ == "__main__":
 
     if args.device is None:
         args.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        
+
     model = Reranker.from_pretrained(
         model_name_or_path=args.model,
         batch_size=args.batch_size,
