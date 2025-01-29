@@ -1,7 +1,8 @@
 import os
 import sys
-import signal
+import torch
 import shlex
+import signal
 import psutil
 import getpass
 import argparse
@@ -25,7 +26,7 @@ def is_server_running(port):
     return False
 
 
-def stop_model(model_name):
+def stop_model(config, model_name):
     """Stop the model server running on the specified port."""
 
     port = config.get_port(model_name)
@@ -82,13 +83,19 @@ def serve_model(
     base_model = shlex.quote(model_name)
 
     max_model_length = config.max_tokens.get(model_name, max_model_len)
-
+    num_gpus = torch.cuda.device_count()
+    
+    if num_gpus == 0:
+        print("> No GPUs detected. Exiting.")
+        return
+    
     cmd = (
         f"python -m vllm.entrypoints.openai.api_server "
         f"--model {base_model} "
         f"--port {port} "
         f"--gpu-memory-utilization {gpu_memory_utilization} "
         f"--max-model-len {max_model_length} "
+        f"--tensor-parallel-size {num_gpus} "
     )
 
     process = subprocess.Popen(cmd, shell=True, preexec_fn=os.setsid)
@@ -107,7 +114,7 @@ def serve_model(
     signal.signal(signal.SIGTERM, terminate)
 
     try:
-        print(f"> Model server started with command: \n" f"  $ {cmd}\n")
+        print(f"> Model server started using {num_gpus} GPUs with command: \n  $ {cmd}\n")
         process.wait()
     except KeyboardInterrupt:
         terminate(None, None)
@@ -125,12 +132,14 @@ def parse_args():
         "--model_name",
         help="Start the specified model server by name.",
         type=str,
-        default="meta-llama/Llama-3.1-8B",
         choices=[
             "EleutherAI/gpt-j-6B",
             "meta-llama/Llama-3.1-8B",
             "neuralmagic/Llama-3.1-Nemotron-70B-Instruct-HF-FP8-dynamic",
+            "inpars-plus/Meta-Llama-3.1-Instruct-8B_merged-16bit_CPO_MSMARCO"
         ],
+        # default="meta-llama/Llama-3.1-8B",
+        default="inpars-plus/Meta-Llama-3.1-Instruct-8B_merged-16bit_CPO_MSMARCO",
     )
 
     args = parser.parse_args()
