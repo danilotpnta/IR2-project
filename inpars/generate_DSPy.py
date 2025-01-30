@@ -253,7 +253,7 @@ def generate_queries(
     # Iterate over strategies
     for strategy_name, predictor in selected_strategies.items():
         intermediate_save_path = (
-            f"data/{dataset}/queries_{model_name.split('/')[-1]}_{strategy_name}.jsonl"
+            f"results/{dataset}/queries_{model_name.split('/')[-1]}_{strategy_name}.jsonl"
         )
 
         processed_generations = []
