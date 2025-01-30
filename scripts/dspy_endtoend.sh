@@ -7,7 +7,7 @@
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=4
 #SBATCH --time=08:59:00
-#SBATCH --output=/scratch-shared/scur2880/logs/scifact_Agent_DSPy_end_to_end_%A.out
+#SBATCH --output=/scratch-shared/scur2880/logs/scifact_10k_Agent_end_to_end_%A.out
 
 #SBATCH --ear=on
 #SBATCH --ear-policy=monitoring
@@ -30,6 +30,8 @@ STRATEGY="Agent"
 PROJECT_ROOT="/home/$USER/IR2-project"
 RESULTS_DIR="$PROJECT_ROOT/results/$DATASET"
 SCRATCH_RERANKERS="/scratch-shared/$USER/rerankers/$DATASET"
+# SUBSET=""
+SUBSET="_10k"
 
 cd "$PROJECT_ROOT"
 source IR2-env/bin/activate
@@ -42,11 +44,11 @@ source IR2-env/bin/activate
 #   - Evaluate:    30 min
 
 srun python -m inpars.filter \
-        --input="data/$DATASET/queries_Llama-3.1-8B_${STRATEGY}.jsonl" \
+        --input="results/$DATASET/queries_Llama-3.1-8B_${STRATEGY}${SUBSET}.jsonl" \
         --dataset="$DATASET" \
         --filter_strategy="reranker" \
         --keep_top_k="10_000" \
-        --output="$RESULTS_DIR/queries_Llama-3.1-8B_${STRATEGY}_filtered.jsonl" \
+        --output="$RESULTS_DIR/queries_Llama-3.1-8B_${STRATEGY}_filtered${SUBSET}.jsonl" \
         --use_scratch_shared_cache \
         --keep_only_question \
         --batch_size 32 \
@@ -54,28 +56,28 @@ srun python -m inpars.filter \
 
 sleep 120
 srun python -m inpars.generate_triples \
-        --input="$RESULTS_DIR/queries_Llama-3.1-8B_${STRATEGY}_filtered.jsonl" \
+        --input="$RESULTS_DIR/queries_Llama-3.1-8B_${STRATEGY}_filtered${SUBSET}.jsonl" \
         --dataset="$DATASET" \
-        --output="$RESULTS_DIR/queries_Llama-3.1-8B_${STRATEGY}_triplets.tsv"
+        --output="$RESULTS_DIR/queries_Llama-3.1-8B_${STRATEGY}_triplets${SUBSET}.tsv"
 
 sleep 120
 srun python -m inpars.train \
-        --triples="$RESULTS_DIR/queries_Llama-3.1-8B_${STRATEGY}_triplets.tsv" \
+        --triples="$RESULTS_DIR/queries_Llama-3.1-8B_${STRATEGY}_triplets${SUBSET}.tsv" \
         --base_model="castorini/monot5-3b-msmarco-10k" \
-        --output_dir="$SCRATCH_RERANKERS/${STRATEGY}/" \
+        --output_dir="$SCRATCH_RERANKERS/${STRATEGY}/${SUBSET}" \
         --max_steps="156"
 
 sleep 120
 srun python -m inpars.rerank \
-        --model="$SCRATCH_RERANKERS/${STRATEGY}/" \
+        --model="$SCRATCH_RERANKERS/${STRATEGY}/${SUBSET}" \
         --dataset="$DATASET" \
-        --output_run="$RESULTS_DIR/queries_Llama-3.1-8B_${STRATEGY}.txt" \
+        --output_run="$RESULTS_DIR/queries_Llama-3.1-8B_${STRATEGY}${SUBSET}.txt" \
         --batch_size 64 \
         --fp16
 
 sleep 120
 srun python -m inpars.evaluate \
         --dataset="$DATASET" \
-        --run="$RESULTS_DIR/queries_Llama-3.1-8B_${STRATEGY}.txt" \
+        --run="$RESULTS_DIR/queries_Llama-3.1-8B_${STRATEGY}${SUBSET}.txt" \
         --json \
-        --output_path="$RESULTS_DIR/queries_Llama-3.1-8B_${STRATEGY}_results.json"
+        --output_path="$RESULTS_DIR/queries_Llama-3.1-8B_${STRATEGY}_results${SUBSET}.json"

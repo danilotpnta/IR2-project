@@ -1,6 +1,6 @@
 import os
 
-# os.environ["DSP_CACHEBOOL"] = "false"
+os.environ["DSP_CACHEBOOL"] = "false"
 
 import sys
 import dspy
@@ -19,50 +19,24 @@ def disable_warnings():
     os.environ["TF_ENABLE_ONEDNN_OPTS"] = "0"
 
 
-def parse_args():
-    parser = argparse.ArgumentParser()
+def get_strategy(strategy_name):
+    """Lazy initialization of strategies to avoid unnecessary instantiations."""
 
-    parser.add_argument(
-        "--dataset",
-        choices=[
-            "nfcorpus",
-            "trec-covid",
-            "hotpotqa",
-            "fiqa",
-            "arguana",
-            "webis-touche2020",
-            "dbpedia-entity",
-            "scidocs",
-            "fever",
-            "climate-fever",
-            "scifact",
-        ],
-        default="trec-covid",
-        help="Choose dataset from BEIR to generate queries.",
+    rationale_type_CoT = dspy.OutputField(
+        prefix="Reasoning: Let's think step by step in order to",
+        desc="${produce one single relevant query}. 1. ... ",
     )
 
-    parser.add_argument(
-        "--model_name",
-        choices=[
-            "EleutherAI/gpt-j-6B",
-            "meta-llama/Llama-3.1-8B",
-            "neuralmagic/Llama-3.1-Nemotron-70B-Instruct-HF-FP8-dynamic",
-        ],
-        default="meta-llama/Llama-3.1-8B",
-        help="Choose query generation model. ",
-    )
-
-    parser.add_argument(
-        "--data_dir",
-        default="./",
-        help="Directory where the generated queries from InPars would be downloaded.",
-    )
-    parser.add_argument(
-        "--batch_size", type=int, default=1000, help="Batch size for query generation."
-    )
-    args = parser.parse_args()
-
-    return args
+    strategies = {
+        "Zero-shot": lambda: SimpleDocumentToQuery,
+        "CoT": lambda: dspy.ChainOfThought(
+            DocumentToQuery, use_tqdm=True, rationale_type=rationale_type_CoT
+        ),
+        "Agent": lambda: dspy.ChainOfThought(
+            AgentQueryGenerator, use_tqdm=True, rationale_type=rationale_type_CoT
+        ),
+    }
+    return strategies[strategy_name]() if strategy_name in strategies else None
 
 
 def prepare_data(
@@ -239,6 +213,7 @@ def generate_queries(
     model_name: str,
     dataset: str,
     batch_size: int,
+    strategies: list,
     save_interval: int = 10,
     max_new_tokens: int = 200,
 ):
@@ -272,24 +247,11 @@ def generate_queries(
         1 if len(prompts) % batch_size != 0 else 0
     )
 
-    rationale_type_CoT = dspy.OutputField(
-        prefix="Reasoning: Let's think step by step in order to",
-        desc="${produce one single relevant query}. 1. ... ",
-    )
-
-    # Define strategies
-    strategies = {
-        # "Zero-shot": SimpleDocumentToQuery,
-        # "CoT": dspy.ChainOfThought(
-        #     DocumentToQuery, use_tqdm=True, rationale_type=rationale_type_CoT
-        # ),
-        "Agent": dspy.ChainOfThought(
-            AgentQueryGenerator, use_tqdm=True, rationale_type=rationale_type_CoT
-        ),
-    }
+    selected_strategies = {name: get_strategy(name) for name in strategies}
+    print(f"Selected strategies: {selected_strategies.keys()}")
 
     # Iterate over strategies
-    for strategy_name, predictor in strategies.items():
+    for strategy_name, predictor in selected_strategies.items():
         intermediate_save_path = (
             f"data/{dataset}/queries_{model_name.split('/')[-1]}_{strategy_name}.jsonl"
         )
@@ -347,6 +309,61 @@ def generate_queries(
         print(f"Completed and saved results for {strategy_name}")
 
 
+def parse_args():
+    parser = argparse.ArgumentParser()
+
+    parser.add_argument(
+        "--dataset",
+        choices=[
+            "nfcorpus",
+            "trec-covid",
+            "hotpotqa",
+            "fiqa",
+            "arguana",
+            "webis-touche2020",
+            "dbpedia-entity",
+            "scidocs",
+            "fever",
+            "climate-fever",
+            "scifact",
+        ],
+        default="trec-covid",
+        help="Choose dataset from BEIR to generate queries.",
+    )
+
+    parser.add_argument(
+        "--model_name",
+        choices=[
+            "EleutherAI/gpt-j-6B",
+            "meta-llama/Llama-3.1-8B",
+            "neuralmagic/Llama-3.1-Nemotron-70B-Instruct-HF-FP8-dynamic",
+            "inpars-plus/Meta-Llama-3.1-Instruct-8B_merged-16bit_CPO_MSMARCO",
+        ],
+        # default="meta-llama/Llama-3.1-8B",
+        default="inpars-plus/Meta-Llama-3.1-Instruct-8B_merged-16bit_CPO_MSMARCO",
+        help="Choose query generation model. ",
+    )
+
+    parser.add_argument(
+        "--data_dir",
+        default="./",
+        help="Directory where the generated queries from InPars would be downloaded.",
+    )
+    parser.add_argument(
+        "--batch_size", type=int, default=1000, help="Batch size for query generation."
+    )
+    parser.add_argument(
+        "--strategies",
+        nargs="+",  # Accepts multiple choices
+        choices=["Zero-shot", "CoT", "Agent"],
+        default=["Zero-shot"],  # Default to "Zero-shot"
+        help="Select strategies to run. Options: Zero-shot, CoT, Agent. Multiple choices allowed.",
+    )
+    args = parser.parse_args()
+
+    return args
+
+
 def main():
 
     args = parse_args()
@@ -371,7 +388,7 @@ def main():
     #     print(f"Generating queries for {dataset} dataset.")
     #     generate_queries(args.model_name, dataset, args.batch_size)
 
-    generate_queries(args.model_name, args.dataset, args.batch_size)
+    generate_queries(args.model_name, args.dataset, args.batch_size, args.strategies)
 
 
 if __name__ == "__main__":
