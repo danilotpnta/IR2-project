@@ -3,7 +3,6 @@ import os
 import json
 
 import torch
-from time import time
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 from vllm import LLM, SamplingParams
@@ -35,9 +34,8 @@ def _serialize_logprobs(logprobs, num_tokens):
         return ret
     # iterate over the list of outputs
     for item in logprobs:
-        lp_list = list(
-            sorted(item.values(), key=lambda x: x.rank)
-        )  # ascending order; highest rank first (1, 2, ...)
+        lp_list = sorted(item.values(), key=lambda x: x.rank)
+        # ascending order; highest rank first (1, 2, ...)
         if len(lp_list) > num_tokens:
             _ = lp_list.pop(-2)  # remove the lowest ranked token that was not sampled.
         ret.append(
@@ -77,7 +75,7 @@ class VLLMQueryGenerator:
         enable_chunked_prefill=True,
         force=True,
         seed=SEED,
-        cache_every_n=32,
+        cache_every_n=1,
         **kwargs,
     ):
         save_folder = os.path.join(save_folder, model_name)
@@ -143,10 +141,11 @@ class VLLMQueryGenerator:
             else:
                 llm = self.model
 
-            loader_prompts = DataLoader(prompts[len(generations) :], batch_size=batch_size)
-            step_nr = 0
-            for d_ids, p in tqdm(
-                zip(loader_docid, loader_prompts),
+            loader_prompts = DataLoader(
+                prompts[len(generations) :], batch_size=batch_size
+            )
+            for i, (d_ids, p) in tqdm(
+                enumerate(zip(loader_docid, loader_prompts)),
                 desc="Generation",
                 unit="batch",
                 total=len(loader_docid),
@@ -163,9 +162,8 @@ class VLLMQueryGenerator:
                     for d_id, output in zip(d_ids, outputs)
                 }
 
-                step_nr += 1
-                if step_nr % cache_every_n == 0:
-                    logger.info('saving at step %d', step_nr) 
+                if i % cache_every_n == 0:
+                    logger.info("saving at step %d", i)
                     with open(save_file, "w") as f:
                         json.dump(generations, f)
         except (ValueError, RuntimeError) as e:
@@ -189,11 +187,18 @@ class VLLMQueryGenerator:
                 **lora_kwargs,
             )
 
-            loader_docid = DataLoader(doc_ids[len(generations) :], batch_size=batch_size)
-            loader_prompts = DataLoader(prompts[len(generations) :], batch_size=batch_size)
-            step_nr = 0
-            for d_ids, p in tqdm(
-                zip(loader_docid, loader_prompts),
+            loader_docid = DataLoader(
+                doc_ids[len(generations) :],
+                batch_size=batch_size,
+                collate_fn=lambda x: x,
+            )
+            loader_prompts = DataLoader(
+                prompts[len(generations) :],
+                batch_size=batch_size,
+                collate_fn=lambda x: x,
+            )
+            for i, (d_ids, p) in tqdm(
+                enumerate(zip(loader_docid, loader_prompts)),
                 desc="Generation",
                 unit="batch",
                 total=len(loader_docid),
@@ -210,9 +215,9 @@ class VLLMQueryGenerator:
                     )
                     for d_id, output in zip(d_ids, outputs)
                 }
-                step_nr += 1
-                if step_nr % cache_every_n == 0:
-                    logger.info('saving at step %d', step_nr) 
+
+                if i % cache_every_n == 0:
+                    logger.info("saving at step %d", i)
                     with open(save_file, "w") as f:
                         json.dump(generations, f)
 

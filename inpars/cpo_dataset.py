@@ -230,6 +230,7 @@ def continue_from_checkpoint(
     has_ref_scores = False
     has_teacher_scores = False
     has_student_scores = False
+    has_filtered = False
 
     if output_path.exists():
         with open(output_path, "r") as f:
@@ -251,6 +252,8 @@ def continue_from_checkpoint(
         has_ref_scores = "ref_score" in data
         has_teacher_scores = "teacher_score" in data
         has_student_scores = "student_score" in data
+        has_filtered = output_path.with_stem(output_path.stem + "_filtered").exists()
+
     return (
         output,
         has_docs_queries,
@@ -260,6 +263,7 @@ def continue_from_checkpoint(
         has_ref_scores,
         has_teacher_scores,
         has_student_scores,
+        has_filtered,
     )
 
 
@@ -464,6 +468,8 @@ def build_cpo_dataset(
     enable_prefix_caching: bool = True,
     enable_chunked_prefill: bool = True,
     temperature=0.3,
+    lower_bound=0.0,
+    upper_bound=1.0,
 ):
     """
     TODO: update the docstring
@@ -482,6 +488,7 @@ def build_cpo_dataset(
     8. Compute reference scores
     9. Compute teacher scores
     10. Compute student scores
+    11. Filter out the examples with scores outside the range [lower_bound, upper_bound]
 
     After each of these steps, save the dataset to a JSON file in the following format:
     ```json
@@ -528,7 +535,7 @@ def build_cpo_dataset(
     output_dir = output_dir / re.sub(r"[^a-zA-Z0-9]", "_", dataset_name)
     output_dir.mkdir(parents=True, exist_ok=True)
     output_path = (
-        output_dir / f"llmt_preference_{model_name.split("/")[-1]}_{num_samples}.json"
+        output_dir / f"llmt_preference_{model_name.split('/')[-1]}_{num_samples}.json"
     )
 
     dataset_path = output_dir / "combined_data.csv"
@@ -587,6 +594,7 @@ def build_cpo_dataset(
         has_ref_scores,  # step 8
         has_teacher_scores,  # step 9
         has_student_scores,  # step 10
+        has_filtered,  # step 11
     ) = continue_from_checkpoint(
         output_path,
         dataset_name,
@@ -631,7 +639,7 @@ def build_cpo_dataset(
         #     )
         # )
 
-        output["doc_ids"] = samples["doc_id"].tolist()
+        output["doc_ids"] = samples["doc_id"].astype(str).tolist()
         for row in samples.itertuples():
             output["data"][row.doc_id] = {
                 "target_doc_id": str(row.doc_id),
@@ -829,7 +837,33 @@ def build_cpo_dataset(
             json.dump(output, f)
         logger.info(f"Generated student scores and saved dataset to {output_path}")
 
-    return output
+    if not has_filtered:
+        # filter out the examples that have the same query
+        filtered_dict = {
+            doc_id: scores
+            for doc_id, scores in output["data"].items()
+            if all(
+                lower_bound <= s <= upper_bound
+                for s in (
+                    scores["ref_score"],
+                    scores["teacher_score"],
+                    scores["student_score"],
+                )
+            )
+        }
+
+        output["doc_ids"] = list(filtered_dict.keys())
+        output["data"] = filtered_dict
+        output["metadata"]["num_samples"] = len(filtered_dict)
+
+        output_path = output_path.with_stem(output_path.stem + "_filtered")
+        # checkpoint
+        with open(output_path, "w") as f:
+            json.dump(output, f)
+        logger.info(
+            f"Filtered out examples with the same query and saved dataset to {output_path}"
+        )
+    return output_path
 
 
 if __name__ == "__main__":
@@ -853,7 +887,7 @@ if __name__ == "__main__":
         default="inparsplus",
         choices=["inparsplus", "inpars", "promptagator"],
     )
-    parser.add_argument("--dataset_name", type=str, default="msmarco-document")
+    parser.add_argument("--dataset_name", type=str, default="msmarco-passage")
     parser.add_argument("--num_examples", type=int, default=2)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--max_doc_length", type=int, default=1024)
@@ -867,6 +901,9 @@ if __name__ == "__main__":
     parser.add_argument("--enable_chunked_prefill", action="store_true")
     parser.add_argument("--enable_prefix_caching", action="store_true")
     parser.add_argument("--temperature", type=float, default=0.3)
+    parser.add_argument("--lower_bound", type=float, default=0.0)
+    parser.add_argument("--upper_bound", type=float, default=1.0)
+    parser.add_argument("--deterministic", action="store_true")
     args = parser.parse_args()
     logging.debug(f"Arguments: {args}")
 
@@ -886,6 +923,11 @@ if __name__ == "__main__":
         max_prompt_length=args.max_prompt_length,
         max_workers=args.max_workers,
         use_vllm=args.use_vllm,
-        max_new_token=args.max_new_token,
+        enable_chunked_prefill=args.enable_chunked_prefill,
+        enable_prefix_caching=args.enable_prefix_caching,
         temperature=args.temperature,
+        deterministic=args.deterministic,
+        lower_bound=args.lower_bound,
+        upper_bound=args.upper_bound,
+        max_new_token=args.max_new_token,
     )

@@ -10,7 +10,7 @@ setup() {
 	source "$1/.venv/bin/activate"
 
 	# export CUDA_VISIBLE_DEVICES=0
-	export TF_ENABLE_ONEDNN_OPTS=0
+	# export TF_ENABLE_ONEDNN_OPTS=0
 	# export WANDB_API_KEY=
 	# export HF_TOKEN=
 	

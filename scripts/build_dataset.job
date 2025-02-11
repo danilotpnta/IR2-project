@@ -19,13 +19,14 @@ source $PROJECT_ROOT/scripts/snellius_setup.sh
 setup $PROJECT_ROOT
 cd $PROJECT_ROOT
 
-MODEL_NAME="meta-llama/Meta-Llama-3.1-8B"
-TEACHER_MODEL="neuralmagic-ent/Llama-3.3-70B-Instruct-FP8-dynamic"
+MODEL_NAME="meta-llama/Meta-Llama-3.1-8B-Instruct"
+TEACHER_MODEL="cortecs/Llama-3.3-70B-Instruct-FP8-Dynamic"
 OUTPUT_DIR="/scratch-shared/$USER/cpo_dataset"
 NUM_SAMPLES=100000
 PROMPT_TEMPLATE_NAME="inparsplus"
-DATASET_NAME="msmarco-document"
+DATASET_NAME="msmarco-passage"
 NUM_EXAMPLES=2
+UPPER_BOUND=0.7
 
 # rest of the script
 srun python -m inpars.cpo_dataset \
@@ -33,8 +34,9 @@ srun python -m inpars.cpo_dataset \
 --teacher_model $TEACHER_MODEL \
 --output_dir $OUTPUT_DIR \
 --num_samples $NUM_SAMPLES \
---prompt_template_name $PROMPT_TEMPLATE_NAME \
+--prompt_template_name $PROMPT_TEMPLATE_NAME --deterministic \
 --dataset_name $DATASET_NAME \
 --num_examples $NUM_EXAMPLES \
+--upper_bound $UPPER_BOUND \
 --use_vllm
 # --student_use_fp16 \

@@ -155,3 +155,9 @@ inparsplus-msmarco-document:
   template: |
     Document: {document}
     Query: {query}
+
+inparsplus-msmarco-passage:
+  mode: dynamic_v2
+  template: |
+    Document: {document}
+    Query: {query}

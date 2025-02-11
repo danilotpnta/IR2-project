@@ -146,6 +146,7 @@ class InPars:
         prompt_name = f'{prompt}-{corpus}' if prompt == 'promptagator' else prompt
         self.prompter = Prompt.load(
             name=prompt_name,
+            dataset=corpus if prompt == "inparsplus" else None,
             examples=self.fewshot_examples,
             tokenizer=self.tokenizer,
             max_query_length=self.max_query_length,

@@ -1,0 +1,40 @@
+#!/bin/bash
+#SBATCH --partition=gpu_h100
+#SBATCH --gpus=1
+#SBATCH --job-name=pipeline
+#SBATCH --time=32:00:00
+# SBATCH --array=1-2%2
+#SBATCH --output=/scratch-shared/%u/logs/%x_%A.out
+
+date 
+
+# Setup environment
+PROJECT_ROOT=/home/$USER/IR2-project
+cd $PROJECT_ROOT
+
+source $PROJECT_ROOT/scripts/snellius_setup.sh
+setup $PROJECT_ROOT
+
+SCRIPT_PATH="$PROJECT_ROOT/scripts/inpars_modernbert.job"
+# ARGS_PATH="$PROJECT_ROOT/scripts/inpars_cpo_msmarco_monot5.txt"
+# # read the arguments from the file corresponding to the array index
+# ARGS=$(cat $ARGS_PATH | head -n $SLURM_ARRAY_TASK_ID | tail -n 1)
+# # find the data_dir from the arguments
+# GENERATOR_LLM="/scratch-shared/$USER/cpo_output/model_msmarco_filtered/model"
+GENERATOR_LLM="inpars-plus/Meta-Llama-3.1-Instruct-8B_merged-16bit_CPO_MSMARCO"
+MONOT5="castorini/monot5-3b-msmarco-10k"
+GENERATE_FILTER="--generate --filter --triples"
+DATASET=arguana
+ARGS="--data_dir=/scratch-shared/$USER/inpars/cpo-msmarcop_${DATASET}_inparsplus_gen100k_scores_monot5_top100_3 --dataset=$DATASET --generationLLM=$GENERATOR_LLM --reranker=$MONOT5 --rerank_topk=100 --seed=69 --filter_options=scores --max_generations=100_000 --prompt_options=inparsplus --use_vllm --fp16 $GENERATE_FILTER --finetune --rerank --evaluate"
+DATA_DIR=$(echo $ARGS | sed -n 's/.*--data_dir=\([^ ]*\).*/\1/p')
+# create the data_dir if it does not exist
+mkdir -p $DATA_DIR
+# copy script and arguments to the data_dir
+cp $SCRIPT_PATH $DATA_DIR
+echo $ARGS > $DATA_DIR/arguments.txt
+
+echo
+echo "Starting job with arguments: $ARGS"
+echo
+
+srun python -m src.reproduce $ARGS

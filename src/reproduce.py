@@ -38,16 +38,16 @@ def parse_args():
 
     parser.add_argument(
         '--generationLLM',
-        choices=[
-            'EleutherAI/gpt-j-6B',
-            'meta-llama/Llama-3.2-3B',
-            'meta-llama/Llama-3.1-8B',
-            'meta-llama/Meta-Llama-3.1-8B-Instruct',
-            'inpars-plus/Meta-Llama-3.1-8B-Instruct_merged-16bit_CPO_BEIR',
-            'inpars-plus/Meta-Llama-3.1-8B-Instruct_merged-16bit_CPO_MSMARCO',
-            'inpars-plus/Meta-Llama-3.1-8B_merged-16bit_CPO_MSMARCO',
-            'neuralmagic/Llama-3.1-Nemotron-70B-Instruct-HF-FP8-dynamic',
-        ],
+        # choices=[
+        #     'EleutherAI/gpt-j-6B',
+        #     'meta-llama/Llama-3.2-3B',
+        #     'meta-llama/Llama-3.1-8B',
+        #     'meta-llama/Meta-Llama-3.1-8B-Instruct',
+        #     'inpars-plus/Meta-Llama-3.1-8B-Instruct_merged-16bit_CPO_BEIR',
+        #     'inpars-plus/Meta-Llama-3.1-8B-Instruct_merged-16bit_CPO_MSMARCO',
+        #     'inpars-plus/Meta-Llama-3.1-8B_merged-16bit_CPO_MSMARCO',
+        #     'neuralmagic/Llama-3.1-Nemotron-70B-Instruct-HF-FP8-dynamic',
+        # ],
         default='EleutherAI/gpt-j-6B',
         help="Choose query generation model. "
     )
@@ -57,11 +57,11 @@ def parse_args():
 
     parser.add_argument(
         '--reranker',
-        choices=[
-            'castorini/monot5-3b-msmarco-10k',
-            'castorini/rankllama-v1-7b-lora-passage',
-            'cross-encoder/ms-marco-MiniLM-L-12-v2'
-        ],
+        # choices=[
+        #     'castorini/monot5-3b-msmarco-10k',
+        #     'castorini/rankllama-v1-7b-lora-passage',
+        #     'cross-encoder/ms-marco-MiniLM-L-12-v2'
+        # ],
         default='castorini/monot5-3b-msmarco-10k',
         help="Choose reranker model."
     )
@@ -93,7 +93,7 @@ def parse_args():
         "--prompt_options",
         nargs='+',
         default=[],
-        choices=['inpars', 'inpars-gbq', 'promptagator'],
+        choices=['inpars', 'inpars-gbq', 'promptagator', 'inparsplus'],
         help="""Choose one of more prompt options: 'inpars', 'inpars-gbq', 'promptagator'.
         If no option is provided, we default to ['inpars', 'promptagator'], or, if
         --use_gbq is set, to ['inpars-gbq', 'promptagator'].
@@ -247,12 +247,14 @@ def generate_triples(filtered_path:str, dataset:str, output_path:str, seed:int) 
     generation_time = time.time() - start_generation
     logging.info(f'Triplet generation took : {generation_time} seconds.\n')
 
-def train_reranker(triples_path:str, ranker_model:str, output_path, fp16:bool, seed:int) -> None:
+def train_reranker(triples_path:str, ranker_model:str, output_path, fp16:bool, seed:int, use_peft_config=False) -> None:
     logging.info(f'------Starting reranker training of : {triples_path}------')
     start_generation = time.time()
     
+    
+    
     args = [
-        "python", "-m", "inpars.train",
+        "python", "-m", "inpars.train" if not use_peft_config else f"inpars.train_crossencoder --peft_config_reranker.json",
         f"--triples={triples_path}",
         f"--base_model={ranker_model}",
         f"--output_dir={output_path}",
@@ -540,7 +542,7 @@ class InParsExperiment:
             for filter_type in self.filter_options:
                 input_path = os.path.join(self.data_path, prompt_type, filter_type, f'{prompt_type}-triples.tsv')
                 output_path = os.path.join(self.data_path, prompt_type, filter_type, 'reranker')
-                if os.path.exists(output_path):
+                if os.path.exists(output_path) and False:
                     logging.info(f'({prompt_type},{filter_type}) has already a reranker trained. Continuing...')
                     continue
                 
@@ -558,8 +560,9 @@ class InParsExperiment:
         for prompt_type in self.prompt_options:
             for filter_type in self.filter_options:
                 reranker_path = os.path.join(self.data_path, prompt_type, filter_type, 'reranker')
+                # reranker_path = self.reranker_model
                 output_path = os.path.join(self.data_path, prompt_type, filter_type, 'trec-run.txt')
-                if os.path.exists(output_path):
+                if os.path.exists(output_path) and False:
                     logging.info(f'({prompt_type},{filter_type}) has already been reranked. Continuing...')
                     continue
                 

@@ -1,0 +1,12 @@
+{
+    "peft_type": "LORA",
+    "task_type": "SEQ_CLS",
+    "r": 32,
+    "lora_alpha": 32,
+    "target_modules": [
+        "Wqkv"
+    ],
+    "use_rslora": true,
+    "init_lora_weights": "pissa_niter_4",
+    "modules_to_save": ["classifier"]
+}

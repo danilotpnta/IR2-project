@@ -14,8 +14,10 @@ from transformers import (
     T5ForConditionalGeneration,
     set_seed,
 )
+from peft import PeftModel
 from . import utils
 from .dataset import load_corpus, load_queries
+import logging
 
 # Based on https://github.com/castorini/pygaggle/blob/f54ae53d6183c1b66444fa5a0542301e0d1090f5/pygaggle/rerank/base.py#L63
 prediction_tokens = {
@@ -36,28 +38,97 @@ prediction_tokens = {
 
 
 class Reranker:
-    def __init__(
-        self, silent=False, batch_size=8, fp16=False, torchscript=False, device=None
-    ):
+    def __init__(self, silent=False, batch_size=8, fp16=False, device=None):
         self.silent = silent
         self.batch_size = batch_size
         self.fp16 = fp16
-        self.torchscript = torchscript
         self.device = device
 
     @classmethod
     def from_pretrained(cls, model_name_or_path, **kwargs):
         config = AutoConfig.from_pretrained(model_name_or_path)
-        seq2seq = any(
-            True
-            for architecture in config.architectures
-            if "ForConditionalGeneration" in architecture
-        ) if hasattr(config, 'architectures') and config.architectures is not None else False
+        seq2seq = (
+            any(
+                True
+                for architecture in config.architectures
+                if "ForConditionalGeneration" in architecture
+            )
+            if hasattr(config, "architectures") and config.architectures is not None
+            else False
+        )
         if seq2seq:
+            logging.error(f"SEQ2SEQ={seq2seq}")
             if "flan" in model_name_or_path:
                 return FLANT5Reranker(model_name_or_path, **kwargs)
             return MonoT5Reranker(model_name_or_path, **kwargs)
-        return MonoBERTReranker(model_name_or_path, **kwargs)
+        return (
+            ModernBERTReranker(model_name_or_path, **kwargs)
+            if "modernbert" in str(model_name_or_path).lower()
+            else MonoBERTReranker(model_name_or_path, **kwargs)
+        )
+
+
+class ModernBERTReranker(Reranker):
+    name: str = "ModernBERT"
+
+    def __init__(
+        self,
+        model_name_or_path="answerdotai/ModernBERT-base",
+        torch_compile=True,
+        max_length=2048,
+        **kwargs,
+    ):
+        super().__init__(**kwargs)
+        if not self.device:
+            self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        model_args = {}
+        if self.fp16:
+            model_args["torch_dtype"] = torch.bfloat16
+        self.model = AutoModelForSequenceClassification.from_pretrained(
+            "answerdotai/ModernBERT-base",
+            num_labels=1,
+            **model_args,
+        )
+        # self.model = PeftModel.from_pretrained(self.model, model_name_or_path)
+        # self.model = self.model.merge_and_unload()
+        self.max_length = max_length
+        self.model.to(self.device)
+        if torch_compile:
+            self.model = torch.compile(self.model)
+        self.tokenizer = AutoTokenizer.from_pretrained("answerdotai/ModernBERT-base")
+
+    @torch.inference_mode()
+    def rescore(self, pairs: List[List[str]]):
+        """
+        Calculating scores for a batch of (query, doc) pairs
+        Parameters
+        ----------
+        pairs: dict or transformers.BatchEncoding
+            the input (query, document) pairs tokenized by a HuggingFace's tokenizer.
+        Returns
+        -------
+        torch.Tensor:
+            a vector whose each element is the score (based on the CLS vector) of a (query, document) pair
+        """
+        scores = []
+        for batch in tqdm(
+            utils.chunks(pairs, self.batch_size),
+            disable=self.silent,
+            desc="Rescoring",
+            total=ceil(len(pairs) / self.batch_size),
+        ):
+            batch = [(query, text) for (query, text) in batch]
+            tokens = self.tokenizer(
+                batch,
+                padding=True,
+                truncation=True,
+                return_tensors="pt",
+                max_length=min(self.tokenizer.model_max_length, 1024),
+                pad_to_multiple_of=256,
+            ).to(self.device)
+            output = self.model(**tokens)
+            scores += output[0].tolist()
+        return scores
 
 
 class MonoT5Reranker(Reranker):
@@ -69,7 +140,7 @@ class MonoT5Reranker(Reranker):
         model_name_or_path="castorini/monot5-base-msmarco-10k",
         token_false=None,
         token_true=True,
-        torch_compile=False,
+        torch_compile=True,
         **kwargs,
     ):
         super().__init__(**kwargs)
@@ -85,7 +156,9 @@ class MonoT5Reranker(Reranker):
         if torch_compile:
             self.model = torch.compile(self.model)
         self.model.to(self.device)
-        self.tokenizer = AutoTokenizer.from_pretrained(model_name_or_path, use_fast=True)
+        self.tokenizer = AutoTokenizer.from_pretrained(
+            model_name_or_path, use_fast=True
+        )
         self.token_false_id, self.token_true_id = self.get_prediction_tokens(
             model_name_or_path,
             self.tokenizer,
@@ -179,6 +252,8 @@ class MonoBERTReranker(Reranker):
             model_name_or_path,
             **model_args,
         )
+        if torch_compile:
+            self.model = torch.compile(self.model)
         self.model.to(self.device)
         # Currently I use use_fast=True because of errors/warnings, check whether this makes a difference
         self.tokenizer = AutoTokenizer.from_pretrained(model_name_or_path)
@@ -301,19 +376,16 @@ if __name__ == "__main__":
 
     if args.device is None:
         args.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        
+
     model = Reranker.from_pretrained(
         model_name_or_path=args.model,
         batch_size=args.batch_size,
         fp16=args.fp16,
         device=args.device,
         torch_compile=args.torch_compile,
-        # torchscript=args.torchscript,
     )
 
     run = utils.TRECRun(input_run)
     run.rerank(model, queries, corpus, top_k=args.top_k)
     run.save(args.output_run)
-
-    del model 
     torch.cuda.empty_cache()

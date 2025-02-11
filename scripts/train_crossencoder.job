@@ -1,0 +1,62 @@
+#!/bin/bash
+
+#SBATCH --partition=gpu_h100
+#SBATCH --gpus=1
+
+#SBATCH --job-name=InPars-TRAIN
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=16
+#SBATCH --time=28:59:00
+#SBATCH --output=/scratch-shared/%u/logs/%x_%A.out
+
+date
+export HF_HOME="/scratch-shared/$USER"
+export GPU_COUNT=$(nvidia-smi --list-gpus | wc -l)
+
+# make sure the correct modules are used and that the virtual environment is active
+PROJECT_ROOT=/home/$USER/IR2-project
+source $PROJECT_ROOT/scripts/snellius_setup.sh
+setup $PROJECT_ROOT
+cd $PROJECT_ROOT
+
+# NOTE: make sure this is consistent over all steps
+RUN_NAME=ModernBERT-base-crossencoder
+OUTPUT_DIR=/scratch-shared/$USER/inpars/$RUN_NAME
+mkdir -p $OUTPUT_DIR
+
+# ___________________
+# |    ARGUMENTS    |
+# ___________________
+
+DATASET=ms-marco
+## ExtraArguments
+TRIPLES=$OUTPUT_DIR/$DATASET-triples.jsonl
+MODEL=answerdotai/ModernBERT-base
+OUTPUT=$OUTPUT_DIR/$DATASET/reranker
+## TrainingArguments
+MAX_DOC_LENGTH=1024
+# MAX_STEPS=256 # paper uses 156
+BATCH_SIZE="--per_device_train_batch_size 128"
+AUTO_BATCH=--auto_find_batch_size
+EPOCHS="--num_train_epochs 0.5"
+LEARNING_RATE="--learning_rate 0.000003"
+DTYPE=--bf16 # --bf16 --fp16, --int8 or ""
+RESUME=false # $OUTPUT or false
+TORCH_COMPILE=--torch_compile
+
+# rest of the script
+srun python -m inpars.train_crossencoder \
+    --triples $TRIPLES \
+    --base_model $MODEL \
+    --max_doc_length $MAX_DOC_LENGTH \
+    --output_dir $OUTPUT \
+    --resume_from_checkpoint $RESUME \
+    $AUTO_BATCH $BATCH_SIZE $TORCH_COMPILE $EPOCHS $LEARNING_RATE \
+    $DTYPE \
+    --peft_config config/peft_config_reranker.json \
+
+mkdir -p $OUTPUT_DIR/job_${STEP_NAME}_${SLURM_JOB_ID}
+# copy the script and the logs to the output directory.
+# This should be done regardless of the success of the job
+echo "Copying logs and script to $OUTPUT_DIR/job_${STEP_NAME}_${SLURM_JOB_ID}"
+cp $SCRIPT_PATH $LOG_PATH $OUTPUT_DIR/job_${STEP_NAME}_${SLURM_JOB_ID}
